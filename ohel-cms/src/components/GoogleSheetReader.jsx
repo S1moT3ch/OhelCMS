@@ -65,20 +65,28 @@ const GoogleSheetReader = () => {
                 const grouped = {};
 
                 dataRows.forEach((row) => {
-                    const name = row[nameIndex];
+                    const nameRaw = row[nameIndex];
                     const datesRaw = row[dateIndex];
-                    if (!datesRaw || !name) return;
+                    if (!datesRaw || !nameRaw) return;
+
+                    // Split dei nomi multipli separati da "e" o "," o ";"
+                    const names = nameRaw
+                        .split(/,|;| e /i)  // divide per virgola, punto e virgola o " e " (case-insensitive)
+                        .map(n => n.trim())
+                        .filter(n => n.length > 0);
 
                     const dates = datesRaw
                         .split(/[,;]+/)
-                        .map((d) => d.trim())
-                        .filter((d) => d.length > 0);
+                        .map(d => d.trim())
+                        .filter(d => d.length > 0);
 
                     dates.forEach((date) => {
                         if (!grouped[date]) grouped[date] = [];
-                        if (!grouped[date].includes(name)) {
-                            grouped[date].push(name);
-                        }
+                        names.forEach((name) => {
+                            if (!grouped[date].includes(name)) {
+                                grouped[date].push(name);
+                            }
+                        });
                     });
                 });
 
