@@ -75,7 +75,7 @@ const DateDetailsDialog = ({ open, onClose, dateLabel, peopleWithResponses }) =>
                 boxShadow: 2,
                 backgroundColor: isIntolerance
                     ? "rgba(255,230,230,0.45)"
-                    : "rgba(230,245,255,0.4)",
+                    : "rgba(255,255,255,0)",
                 "&:hover": {
                     transform: !isMobile ? "scale(1.02)" : "none",
                     transition: "transform 0.2s",
@@ -87,7 +87,7 @@ const DateDetailsDialog = ({ open, onClose, dateLabel, peopleWithResponses }) =>
                 fontWeight="bold"
                 mb={1}
                 color={isIntolerance ? "error.main" : "primary.main"}
-                sx={{ fontSize: isMobile ? "0.95rem" : "1.05rem" }}
+                sx={{ fontSize: isMobile ? "1.3rem" : "1.05rem" }}
             >
                 {title} ({people.length} {people.length === 1 ? "persona" : "persone"})
             </Typography>
@@ -105,15 +105,15 @@ const DateDetailsDialog = ({ open, onClose, dateLabel, peopleWithResponses }) =>
                             ) : (
                                 <PersonIcon
                                     sx={{
-                                        fontSize: isMobile ? "1rem" : "1.2rem",
-                                        color: theme.palette.primary.main
+                                        fontSize: isMobile ? "1.3rem" : "1.2rem",
+                                        color: "#000000",
                                     }}
                                 />
                             )}
                         </ListItemIcon>
                         <ListItemText
                             primaryTypographyProps={{
-                                fontSize: isMobile ? "0.9rem" : "1rem"
+                                fontSize: isMobile ? "1.2rem" : "1rem"
                             }}
                             primary={p.name}
                         />
