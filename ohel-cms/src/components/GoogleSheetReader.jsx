@@ -29,6 +29,7 @@ import DateDetailsDialog from "./DateDetailsDialog";
 import CONFIG from "../config/config";
 
 const GoogleSheetsReader = () => {
+    // --- VERSIONE CORRETTA GoogleSheetsReader.jsx ---
     const [groupedData, setGroupedData] = useState({});
     const [loading, setLoading] = useState(true);
     const [sortType, setSortType] = useState("chronological");
@@ -36,10 +37,7 @@ const GoogleSheetsReader = () => {
     const [showPastDates, setShowPastDates] = useState(false);
 
     const [dialogOpen, setDialogOpen] = useState(false);
-    const [dialogData, setDialogData] = useState({
-        dateLabel: "",
-        peopleWithResponses: {},
-    });
+    const [dialogData, setDialogData] = useState({ dateLabel: "", peopleWithResponses: {} });
     const [rawRows, setRawRows] = useState([]);
     const [headerRow, setHeaderRow] = useState([]);
 
@@ -67,30 +65,23 @@ const GoogleSheetsReader = () => {
                 setRawRows(dataRows);
                 setHeaderRow(header);
 
-                const nameIndex = header.findIndex((h) =>
-                    h.toLowerCase().includes("nome")
-                );
+                const nameIndex = header.findIndex((h) => h.toLowerCase().includes("nome"));
                 const dateColumns = header
                     .map((h, idx) => ({ idx, label: h }))
-                    .filter(
-                        (col) =>
-                            col.idx > nameIndex && !col.label.toLowerCase().includes("esigenze")
-                    );
+                    .filter((col) => col.idx > nameIndex && !col.label.toLowerCase().includes("esigenze"));
 
                 const grouped = {};
                 dataRows.forEach((row) => {
                     const nameCell = row[nameIndex];
                     if (!nameCell) return;
-                    const names = nameCell
-                        .split(/,|;| e /i)
-                        .map((n) => n.trim())
-                        .filter((n) => n);
+
+                    const names = nameCell.split(/,|;| e /i).map(n => n.trim()).filter(n => n);
 
                     dateColumns.forEach(({ idx, label }) => {
                         const cell = row[idx];
                         if (cell && cell.trim() !== "") {
                             if (!grouped[label]) grouped[label] = [];
-                            names.forEach((name) => {
+                            names.forEach(name => {
                                 if (!grouped[label].includes(name)) grouped[label].push(name);
                             });
                         }
@@ -108,9 +99,87 @@ const GoogleSheetsReader = () => {
         fetchSheetData();
     }, []);
 
-    // ✅ Versione corretta con rawDate
+// --- Intolleranze ---
+    const getIntolerancesForDate = (dateLabel) => {
+        const intolerancesCount = {};
+        const nameCol = headerRow.findIndex((h) => h.toLowerCase().includes("nome"));
+        const dateColIndex = headerRow.indexOf(dateLabel);
+        const foodCol = headerRow.length - 1;
+
+        rawRows.forEach((row) => {
+            const nameCell = row[nameCol];
+            if (!nameCell) return;
+
+            const names = nameCell.split(/,|;| e /i).map(n => n.trim()).filter(n => n);
+            const dateResponse = row[dateColIndex] || "";
+            const foodResponse = row[foodCol] || "";
+
+            if (dateResponse.trim() !== "" && foodResponse.trim() !== "") {
+                const foods = foodResponse.split(/,|\n/).map(f => f.trim()).filter(f => f);
+                foods.forEach(f => {
+                    if (!intolerancesCount[f]) intolerancesCount[f] = [];
+                    names.forEach(name => {
+                        if (!intolerancesCount[f].includes(name)) intolerancesCount[f].push(name);
+                    });
+                });
+            }
+        });
+
+        return intolerancesCount;
+    };
+
+// --- Dialog ---
+    const openDialogForDate = (dateLabel) => {
+        const responsesMap = {};
+        const foodPreferences = {};
+        const nameCol = headerRow.findIndex((h) => h.toLowerCase().includes("nome"));
+        const dateColIndex = headerRow.indexOf(dateLabel);
+        const foodCol = headerRow.length - 1;
+
+        rawRows.forEach((row) => {
+            const nameCell = row[nameCol];
+            if (!nameCell) return;
+
+            // Split dei nomi multipli nella stessa cella
+            const names = nameCell.split(/,|;| e /i).map(n => n.trim()).filter(n => n);
+
+            const responseCell = row[dateColIndex] || "";
+            const responses = responseCell.split(/,|;| e /i).map(r => r.trim()).filter(r => r);
+
+            names.forEach(name => {
+                responses.forEach(resp => {
+                    if (!responsesMap[resp]) responsesMap[resp] = [];
+                    if (!responsesMap[resp].some(p => p.name === name)) {
+                        responsesMap[resp].push({ name });
+                    }
+                });
+            });
+
+            const foodCell = row[foodCol] || "";
+            if (foodCell.trim() !== "") {
+                const foods = foodCell.split(/,|\n/).map(f => f.trim()).filter(f => f);
+                foods.forEach(f => {
+                    if (!foodPreferences[f]) foodPreferences[f] = [];
+                    names.forEach(name => {
+                        if (!foodPreferences[f].includes(name)) foodPreferences[f].push(name);
+                    });
+                });
+            }
+        });
+
+        // Unione di risposte e intolleranze
+        const mergedResponses = { ...responsesMap };
+        Object.entries(foodPreferences).forEach(([key, names]) => {
+            mergedResponses[key] = names.map(n => ({ name: n }));
+        });
+
+        setDialogData({ dateLabel, peopleWithResponses: mergedResponses });
+        setDialogOpen(true);
+    };
+
+// --- ✅ FIX formato date italiane ---
     const formatItalianDate = (rawLabel) => {
-        if (!rawLabel) return { formatted: "", subtitle: "", rawDate: null };
+        if (!rawLabel) return { main: "", subtitle: "", dateObj: null };
         const cleanLabel = rawLabel.replace(/\s+/g, " ").trim();
 
         let main = "";
@@ -147,69 +216,53 @@ const GoogleSheetsReader = () => {
         }
 
         const monthMap = {
-            gennaio: 1,
-            febbraio: 2,
-            marzo: 3,
-            aprile: 4,
-            maggio: 5,
-            giugno: 6,
-            luglio: 7,
-            agosto: 8,
-            settembre: 9,
-            ottobre: 10,
-            novembre: 11,
-            dicembre: 12,
+            gennaio: 1, febbraio: 2, marzo: 3, aprile: 4,
+            maggio: 5, giugno: 6, luglio: 7, agosto: 8,
+            settembre: 9, ottobre: 10, novembre: 11, dicembre: 12,
         };
 
-        const parts = main.split(" ").filter(Boolean);
-        const dayPart = parts[0];
-        const monthPart = parts[1] ? parts[1].toLowerCase() : "";
+        const [dayPart, monthPart] = main.split(" ");
         const day = parseInt(dayPart, 10);
-        const month = monthMap[monthPart] || 1;
+        const monthName = monthPart?.toLowerCase() || "";
+        const month = monthMap[monthName] || 1;
 
-        const now = new Date();
-        const currentYear = now.getFullYear();
-        const todayMidnight = new Date(currentYear, now.getMonth(), now.getDate());
+        const today = new Date();
+        const currentYear = today.getFullYear();
 
-        let candidateDate = new Date(currentYear, month - 1, day || 1);
-        if (candidateDate < todayMidnight) {
-            candidateDate = new Date(currentYear + 1, month - 1, day || 1);
+        let date = new Date(currentYear, month - 1, day);
+        // 👇 Se la data è già passata, la prossima è l’anno successivo
+        if (date < new Date(today.getFullYear(), today.getMonth(), today.getDate())) {
+            date = new Date(currentYear + 1, month - 1, day);
         }
 
-        const formatted = new Intl.DateTimeFormat("it-IT", {
-            weekday: "long",
-            day: "numeric",
-            month: "long",
-            year: "numeric",
-        }).format(candidateDate);
+        const formattedMain = new Intl.DateTimeFormat("it-IT", {
+            weekday: "long", day: "numeric", month: "long", year: "numeric",
+        }).format(date);
 
         const subtitle = subtitleParts.join("\n");
-        return { formatted, subtitle, rawDate: candidateDate };
+        return { main: formattedMain, subtitle, dateObj: date };
     };
 
-    // 🔍 Filtra solo le date effettivamente passate o future
-    const filteredDates = Object.keys(groupedData).filter((dateLabel) => {
-        const { rawDate } = formatItalianDate(dateLabel);
-        if (!rawDate) return false;
-        const now = new Date();
-        const todayMidnight = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-        return showPastDates || rawDate >= todayMidnight;
+// --- Filtri e ordinamento ---
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    const filteredDates = Object.keys(groupedData).filter(dateLabel => {
+        const { dateObj } = formatItalianDate(dateLabel);
+        if (!dateObj) return false;
+        dateObj.setHours(0, 0, 0, 0);
+        return showPastDates || dateObj >= today;
     });
 
-    // 🔢 Ordina date
     const sortedDates = filteredDates.sort((a, b) => {
-        if (sortType === "chronological") {
-            const aDate = formatItalianDate(a).rawDate;
-            const bDate = formatItalianDate(b).rawDate;
-            if (!aDate || !bDate) return 0;
-            return aDate - bDate;
-        } else if (sortType === "peopleAsc") {
-            return (groupedData[a]?.length || 0) - (groupedData[b]?.length || 0);
-        } else if (sortType === "peopleDesc") {
-            return (groupedData[b]?.length || 0) - (groupedData[a]?.length || 0);
-        }
+        const aDate = formatItalianDate(a).dateObj;
+        const bDate = formatItalianDate(b).dateObj;
+        if (sortType === "chronological") return aDate - bDate;
+        if (sortType === "peopleAsc") return (groupedData[a]?.length || 0) - (groupedData[b]?.length || 0);
+        if (sortType === "peopleDesc") return (groupedData[b]?.length || 0) - (groupedData[a]?.length || 0);
         return 0;
     });
+
 
     const handleClick = (event) => setAnchorEl(event.currentTarget);
     const handleClose = () => setAnchorEl(null);
@@ -444,6 +497,9 @@ const GoogleSheetsReader = () => {
                                                         </ListItem>
                                                     ))}
                                                 </List>
+                                                <Box textAlign="right">
+                                                    <Button size="small" onClick={() => openDialogForDate(date)}>Mostra altri dettagli</Button>
+                                                </Box>
                                             </CardContent>
                                         </Card>
                                     </Fade>
