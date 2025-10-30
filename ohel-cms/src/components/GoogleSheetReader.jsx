@@ -259,13 +259,16 @@ const GoogleSheetReader = () => {
     };
 
     const today = new Date();
+    today.setHours(0, 0, 0, 0); // Normalizza a mezzanotte
 
     // Filtra le date: se showPastDates è false, nasconde le date già passate
     const filteredDates = Object.keys(groupedData).filter(dateLabel => {
         const { main } = formatItalianDate(dateLabel);
         const dateObj = new Date(main);
+        dateObj.setHours(0, 0, 0, 0); // Normalizza la data letta
         return showPastDates || dateObj >= today;
     });
+
 
     const sortedDates = filteredDates.sort((a, b) => {
         if (sortType === "chronological") {
