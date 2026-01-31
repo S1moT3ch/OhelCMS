@@ -125,7 +125,7 @@ const GoogleSheetReader = () => {
         };
 
         fetchAssociationYear();
-    }, []);
+    }, [associationYear]);
 
     // Funzione per contare intolleranze per una data
     // Controlla intolleranze per ogni data separando i nomi multipli
