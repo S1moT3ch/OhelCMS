@@ -32,6 +32,7 @@ import DateDetailsDialog from "./DateDetailsDialog";
 const GoogleSheetReader = () => {
     const [groupedData, setGroupedData] = useState({});
     const [loading, setLoading] = useState(true);
+    const [associationYear, setAssociationYear] = useState([]);
     const [sortType, setSortType] = useState("chronological");
     const [anchorEl, setAnchorEl] = useState(null);
     const [showPastDates, setShowPastDates] = useState(false); // NUOVO
@@ -101,6 +102,29 @@ const GoogleSheetReader = () => {
         };
 
         fetchSheetData();
+    }, []);
+
+    useEffect(() => {
+        const fetchAssociationYear = async () => {
+
+            const { API_KEY } = CONFIG;
+            const SHEET_ID = "1OMAGTsjjBQG1lGnn3GmTszjSQ4F1f4gagl7A7usb_lA";
+            const RANGE = "Foglio1"
+
+            const url = `https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}/values/${RANGE}?key=${API_KEY}`;
+            const res = await fetch(url);
+            const data = await res.json();
+
+            // Trova la prima riga che contiene un numero valido
+            const rowWithYear = data.values.find(
+                row => row && row.length > 1 && !isNaN(parseInt(row[1], 10))
+            );
+
+            setAssociationYear(rowWithYear ? parseInt(rowWithYear[1], 10) : null);
+            console.log(associationYear);
+        };
+
+        fetchAssociationYear();
     }, []);
 
     // Funzione per contare intolleranze per una data
@@ -234,23 +258,30 @@ const GoogleSheetReader = () => {
         const monthName = parts[1]?.toLowerCase() || "";
         const month = monthMap[monthName] || 1;
 
-        const today = new Date();
-        const currentYear = today.getFullYear();
-
-        // Determinazione anno intelligente (se la data è "passata", assume anno successivo)
-        let dateObj = new Date(currentYear, month - 1, day);
-        const todayMidnight = new Date(today.getFullYear(), today.getMonth(), today.getDate());
-
-        if (dateObj < todayMidnight) {
-            dateObj = new Date(currentYear + 1, month - 1, day);
+        if (!day || !month) {
+            return { main: cleanLabel, subtitle: subtitleParts.join("\n"), dateObj: null };
         }
 
+        // 🔑 LOGICA ANNO ASSOCIATIVO
+        const year =
+            month >= 10
+                ? associationYear
+                : associationYear + 1;
+
+        const dateObj = new Date(year, month - 1, day);
+
         const formattedMain = new Intl.DateTimeFormat("it-IT", {
-            weekday: "long", day: "numeric", month: "long", year: "numeric",
+            weekday: "long",
+            day: "numeric",
+            month: "long",
+            year: "numeric",
         }).format(dateObj);
 
-        const subtitle = subtitleParts.join("\n");
-        return { main: formattedMain, subtitle, dateObj };
+        return {
+            main: formattedMain,
+            subtitle: subtitleParts.join("\n"),
+            dateObj,
+        };
     };
 
 // ✅ Filtra correttamente le date (mostra/nasconde date passate)
