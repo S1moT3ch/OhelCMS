@@ -9,7 +9,6 @@ import {
     ListItem,
     ListItemIcon,
     ListItemText,
-    IconButton,
     DialogActions,
     Button,
     useTheme,
@@ -17,7 +16,6 @@ import {
 } from "@mui/material";
 import PersonIcon from "@mui/icons-material/Person";
 import RestaurantIcon from "@mui/icons-material/Restaurant";
-import CloseIcon from "@mui/icons-material/Close";
 
 const DateDetailsDialog = ({ open, onClose, dateLabel, peopleWithResponses }) => {
     const theme = useTheme();
