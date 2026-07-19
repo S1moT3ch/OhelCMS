@@ -469,7 +469,7 @@ const GoogleSheetReader = () => {
 
             <Box component="footer" sx={{ textAlign: "center", py: 2, backgroundColor: "rgba(215,255,186,0.5)", mt: "auto", borderTop: "1px solid rgba(0,0,0,0.1)" }}>
                 <Typography variant="body2" color="text.secondary" sx={{ fontSize: isMobile ? "0.8rem" : "0.9rem" }}>
-                    © 2025 <strong>DigitalCreations</strong>
+                    © 2026 <strong>DigitalCreations</strong>
                 </Typography>
             </Box>
         </Box>

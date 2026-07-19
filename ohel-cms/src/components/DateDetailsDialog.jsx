@@ -21,23 +21,27 @@ const DateDetailsDialog = ({ open, onClose, dateLabel, peopleWithResponses }) =>
     const theme = useTheme();
     const isMobile = useMediaQuery(theme.breakpoints.down("sm"));
 
-    // Opzioni giornaliere standard
-    const dayOptions = [
-        "una parte della giornata",
-        "anche a pranzo",
-        "anche a cena",
-        "senza cena",
-        "con posti auto",
-        "ho bisogno di passaggio"
+    // Parole chiave flessibili per identificare le opzioni di presenza/pasto (valide anche per Soggiorno 2026)
+    const dayKeywords = [
+        "mattina",
+        "pomeriggio",
+        "pranzo",
+        "cena",
+        "giornata",
+        "posto",
+        "passaggio"
     ];
 
     const options = {};
     const intolerances = {};
 
-    // Separazione: opzioni vs intolleranze
+    // Separazione: opzioni del giorno vs intolleranze
     Object.entries(peopleWithResponses).forEach(([key, people]) => {
-        const normalized = key.trim().toLowerCase();
-        const isDayOption = dayOptions.some((opt) => normalized.includes(opt));
+        const normalizedKey = key.trim().toLowerCase();
+
+        // Se la chiave contiene una delle parole chiave del giorno, la trattiamo come opzione di presenza
+        const isDayOption = dayKeywords.some((keyword) => normalizedKey.includes(keyword));
+
         if (isDayOption) {
             options[key] = people;
         } else if (people && people.length > 0) {
@@ -45,21 +49,21 @@ const DateDetailsDialog = ({ open, onClose, dateLabel, peopleWithResponses }) =>
         }
     });
 
-    // Persone coinvolte nella data corrente
+    // Elenco unico delle persone coinvolte in questa specifica data
     const peopleInDate = new Set(
         Object.values(options)
             .flat()
             .map((p) => p.name)
     );
 
-    // Filtriamo le intolleranze solo per queste persone
+    // Filtriamo le intolleranze mostrando solo quelle delle persone effettivamente presenti nella data
     const intolerancesFiltered = {};
     Object.entries(intolerances).forEach(([intol, people]) => {
         const involved = people.filter((p) => peopleInDate.has(p.name));
         if (involved.length > 0) intolerancesFiltered[intol] = involved;
     });
 
-    // Funzione per disegnare box
+    // Renderizzatore dei box delle categorie
     const renderPeopleBox = (title, people, isIntolerance = false) => (
         <Box
             key={title}
@@ -135,7 +139,7 @@ const DateDetailsDialog = ({ open, onClose, dateLabel, peopleWithResponses }) =>
             </DialogTitle>
 
             <DialogContent dividers sx={{ py: 3 }}>
-                {/* Opzioni della giornata */}
+                {/* Opzioni/Presenze della giornata */}
                 {Object.keys(options).length > 0 && (
                     <Box display="flex" flexWrap="wrap" gap={2} mb={3}>
                         {Object.entries(options).map(([option, people]) =>
@@ -144,7 +148,7 @@ const DateDetailsDialog = ({ open, onClose, dateLabel, peopleWithResponses }) =>
                     </Box>
                 )}
 
-                {/* Divider */}
+                {/* Sezione Intolleranze Alimentari */}
                 {Object.keys(intolerancesFiltered).length > 0 && (
                     <Box my={3} display="flex" alignItems="center">
                         <Box flexGrow={1} height={1} bgcolor="grey.300" />
@@ -164,7 +168,7 @@ const DateDetailsDialog = ({ open, onClose, dateLabel, peopleWithResponses }) =>
                     </Box>
                 )}
 
-                {/* Intolleranze filtrate */}
+                {/* Lista Intolleranze filtrate */}
                 {Object.keys(intolerancesFiltered).length > 0 && (
                     <Box display="flex" flexWrap="wrap" gap={2}>
                         {Object.entries(intolerancesFiltered).map(([intol, people]) =>
