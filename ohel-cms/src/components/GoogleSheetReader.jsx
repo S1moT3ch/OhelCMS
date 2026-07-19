@@ -214,62 +214,51 @@ const GoogleSheetReader = () => {
     // ✅ Funzione migliorata per formattare correttamente le date italiane
     const formatItalianDate = (rawLabel) => {
         if (!rawLabel) return { main: "", subtitle: "", dateObj: null };
+
+        // Normalizza gli spazi
         const cleanLabel = rawLabel.replace(/\s+/g, " ").trim();
 
-        let main = "";
+        let mainRaw = "";
         let subtitleParts = [];
 
-        // Estrae eventuale testo tra parentesi
+        // 1. Gestione del testo vecchio stile tra parentesi es. "16 novembre (con ragazzi 13-17 anni)"
         const parenMatch = cleanLabel.match(/\(([^)]+)\)/);
         if (parenMatch) {
-            main = cleanLabel.replace(/\(.*?\)/g, "").split(/\s{2,}|\n/)[0].trim();
+            mainRaw = cleanLabel.replace(/\(.*?\)/g, "").trim();
             subtitleParts.push(parenMatch[1].trim());
         } else {
-            const splitMatch = cleanLabel.split(/[-–:]+/);
-            if (splitMatch.length > 1) {
-                main = splitMatch[0].trim();
-                subtitleParts.push(splitMatch.slice(1).join(" - ").trim());
+            // 2. Gestione nuovo stile con orari o separatori es. "23 luglio 15.00 - 23.30"
+            // Cerchiamo dove iniziano i numeri dell'orario o un separatore per dividere la data dal resto
+            const timeMatch = cleanLabel.match(/(\d{1,2}\s+[a-zA-Zàèìòù]+)\s+(.*)/i);
+            if (timeMatch) {
+                mainRaw = timeMatch[1].trim(); // Es: "23 luglio"
+                subtitleParts.push(timeMatch[2].trim()); // Es: "15.00 - 23.30"
             } else {
-                main = cleanLabel.trim();
+                mainRaw = cleanLabel;
             }
         }
 
-        // Cerca parole chiave dopo la data
-        const keywords = ["con", "senza", "spettacolo", "serata", "evento", "ragazzi"];
-        if (subtitleParts.length === 0) {
-            const lower = cleanLabel.toLowerCase();
-            const keyword = keywords.find((k) => lower.includes(` ${k} `));
-            if (keyword) {
-                const idx = lower.indexOf(` ${keyword} `);
-                main = cleanLabel.slice(0, idx).trim();
-                subtitleParts.push(cleanLabel.slice(idx).trim());
-            }
-        }
-
-        // Mappa dei mesi
+        // Mappa dei mesi in italiano per calcolare l'oggetto Date
         const monthMap = {
             gennaio: 1, febbraio: 2, marzo: 3, aprile: 4,
             maggio: 5, giugno: 6, luglio: 7, agosto: 8,
             settembre: 9, ottobre: 10, novembre: 11, dicembre: 12,
         };
 
-        const parts = main.split(" ");
+        const parts = mainRaw.split(" ");
         const day = parseInt(parts[0], 10);
         const monthName = parts[1]?.toLowerCase() || "";
         const month = monthMap[monthName] || 1;
 
         if (!day || !month) {
-            return { main: cleanLabel, subtitle: subtitleParts.join("\n"), dateObj: null };
+            return { main: cleanLabel, subtitle: subtitleParts.join(" | "), dateObj: null };
         }
 
-        // 🔑 LOGICA ANNO ASSOCIATIVO
-        const year =
-            month >= 10
-                ? associationYear
-                : associationYear + 1;
-
+        // Logica dell'anno associativo basato sul mese
+        const year = month >= 10 ? associationYear : associationYear + 1;
         const dateObj = new Date(year, month - 1, day);
 
+        // Formatta la data estesa es. "giovedì 23 luglio 2026"
         const formattedMain = new Intl.DateTimeFormat("it-IT", {
             weekday: "long",
             day: "numeric",
@@ -279,7 +268,7 @@ const GoogleSheetReader = () => {
 
         return {
             main: formattedMain,
-            subtitle: subtitleParts.join("\n"),
+            subtitle: subtitleParts.join(" | "), // Separa con un pipe elegante se ci sono più info
             dateObj,
         };
     };
