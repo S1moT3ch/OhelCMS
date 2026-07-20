@@ -26,10 +26,14 @@ import {
 import PersonIcon from "@mui/icons-material/Person";
 import CalendarMonthIcon from "@mui/icons-material/CalendarMonth";
 import FilterListIcon from "@mui/icons-material/FilterList";
+import ArrowBackIcon from "@mui/icons-material/ArrowBack";
+import { useNavigate } from "react-router-dom";
 
 import DateDetailsDialog from "./DateDetailsDialog";
 
 const GoogleSheetReader = () => {
+    const navigate = useNavigate();
+
     const [groupedData, setGroupedData] = useState({});
     const [loading, setLoading] = useState(true);
     const [associationYear, setAssociationYear] = useState([]);
@@ -324,10 +328,23 @@ const GoogleSheetReader = () => {
                     px: isMobile ? 1.5 : 3,
                     py: isMobile ? 0.5 : 1
                 }}>
-                    <Typography variant={isMobile ? "h6" : "h5"} fontWeight="bold" color="primary"
-                                sx={{flex: 1, textAlign: "left", mb: isMobile ? 1 : 0}}>
-                        Disponibilità date <br/><strong>Associazione Ohel</strong>
-                    </Typography>
+                    {/* Nuovo Box contenitore per allineare Freccia e Titolo */}
+                    <Box sx={{ display: "flex", alignItems: "center", flex: 1 }}>
+                        <IconButton
+                            onClick={() => navigate(-1)}
+                            color="primary"
+                            edge="start"
+                            aria-label="torna indietro"
+                            sx={{ mr: isMobile ? 0.5 : 1.5 }}
+                        >
+                            <ArrowBackIcon fontSize={isMobile ? "small" : "medium"} />
+                        </IconButton>
+
+                        <Typography variant={isMobile ? "subtitle1" : "h5"} fontWeight="bold" color="primary" sx={{ textAlign: "left", lineHeight: 1.2 }}>
+                            Disponibilità date <br/><strong>Associazione Ohel</strong>
+                        </Typography>
+                    </Box>
+
                     <Box sx={{display: "flex", alignItems: "center", flexDirection: isMobile ? "column" : "row"}}>
                         <Box sx={{display: "flex", alignItems: "center"}}>
                             <IconButton onClick={handleClick} color="primary"
@@ -342,7 +359,7 @@ const GoogleSheetReader = () => {
                             <MenuItem onClick={() => handleSelectSort("peopleDesc")}>Data con più persone</MenuItem>
                             <MenuItem onClick={() => handleSelectSort("peopleAsc")}>Data con meno persone</MenuItem>
                         </Menu>
-                        <img style={{ width: isMobile ? "3rem" : "8rem", height: "auto", marginLeft: "10px" }} src="/logo_Ohel.png" alt="logo Ohel"/>
+                        <img style={{ width: isMobile ? "3rem" : "5rem", height: "auto", marginLeft: "10px" }} src="/logo_Ohel.png" alt="logo Ohel"/>
                     </Box>
                 </Toolbar>
             </AppBar>
