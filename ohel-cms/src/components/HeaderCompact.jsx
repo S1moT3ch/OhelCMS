@@ -1,16 +1,53 @@
 import React from "react";
-import {Avatar} from "@mui/material";
+import { Avatar, IconButton } from "@mui/material";
+import ArrowBackIcon from "@mui/icons-material/ArrowBack";
+import { useNavigate } from "react-router-dom";
 
-function HeaderCompact({ subtitle, onLogout }) {
+function HeaderCompact({ subtitle, onLogout, onBack }) {
+    const navigate = useNavigate();
+
+    const handleBackClick = () => {
+        if (onBack) {
+            onBack();
+        } else {
+            navigate(-1); // Torna alla pagina precedente della cronologia
+        }
+    };
+
     return (
         <header style={styles.headerCompact}>
             <div style={styles.leftSection}>
+                {/* Freccia per tornare indietro */}
+                <IconButton
+                    onClick={handleBackClick}
+                    size="small"
+                    sx={{
+                        color: "#1e382b",
+                        padding: "6px",
+                        marginRight: "6px",
+                        "&:hover": { backgroundColor: "#f0f4f2" }
+                    }}
+                    aria-label="Torna indietro"
+                >
+                    <ArrowBackIcon fontSize="small" />
+                </IconButton>
+
+                {/* Logo Ohel */}
                 <Avatar
                     src="/logo_Ohel.png"
                     variant="rounded"
-                    imgProps={{ style: { objectFit: "contain", height: "auto", padding: "4px" } }}
-                    sx={{ width: 40, height: 40, backgroundColor: "#ffffff" }}
+                    imgProps={{ style: { objectFit: "contain", height: "auto", padding: "3px" } }}
+                    sx={{
+                        width: 38,
+                        height: 38,
+                        backgroundColor: "#ffffff",
+                        border: "1px solid #e1ebe5",
+                        borderRadius: "8px",
+                        marginRight: "12px" // Spazio generoso prima del testo
+                    }}
                 />
+
+                {/* Titolo e Sottotitolo */}
                 <div style={styles.textContainerCompact}>
                     <h1 style={styles.titleCompact}>Ohel CMS</h1>
                     {subtitle && <p style={styles.subtitleCompact}>{subtitle}</p>}
@@ -38,7 +75,7 @@ const styles = {
         display: "flex",
         alignItems: "center",
         justifyContent: "space-between",
-        padding: "0 20px",
+        padding: "0 16px",
         boxShadow: "0 2px 8px rgba(46, 91, 67, 0.04)",
         zIndex: 10,
         boxSizing: "border-box",
@@ -48,34 +85,24 @@ const styles = {
         display: "flex",
         alignItems: "center",
     },
-    logoCompact: {
-        width: "30px",
-        height: "10px",             // Rimosso il 100% per evitare che si deformi
-        maxHeight: "30px",
-        objectFit: "contain",
-        borderRadius: "6px",
-        border: "1px solid #e8f0ec",
-        marginRight: "12px",
-        backgroundColor: "#ffffff",
-        padding: "3px",
-        boxSizing: "border-box"
-    },
     textContainerCompact: {
         display: "flex",
         flexDirection: "column",
         textAlign: "left"
     },
     titleCompact: {
-        fontSize: "1.1rem",
+        fontSize: "1.05rem",
         color: "#1e382b",
         margin: 0,
         fontWeight: "800",
+        lineHeight: 1.1
     },
     subtitleCompact: {
-        fontSize: "0.8rem",
+        fontSize: "0.78rem",
         color: "#52796f",
-        margin: 0,
-        fontWeight: "500",
+        margin: "2px 0 0 0",
+        fontWeight: "600",
+        lineHeight: 1.1
     },
     logoutHeaderButton: {
         backgroundColor: "transparent",

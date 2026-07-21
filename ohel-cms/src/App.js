@@ -3,10 +3,12 @@ import { BrowserRouter as Router, Routes, Route } from "react-router-dom";
 import Home from "./components/Home";
 import GoogleSheetReader from "./components/GoogleSheetReader";
 import NotFoundPage from "./components/NotFoundPage";
-import Dashboard from "./components/Dashboard"; // Assicurati che il percorso sia corretto
+import Dashboard from "./components/Dashboard";
 import ProtectedRoute from "./components/ProtectedRoute";
 import SurveyEdit from "./components/SurveyEdit";
-import SurveyVote from "./components/SurveyVote"; // Il "buttafuori" delle rotte
+import SurveyVote from "./components/SurveyVote";
+import SurveyResultsList from "./components/SurveyResultsList";
+import SurveySingleResult from "./components/SurveySingleResult";
 
 function App() {
     return (
@@ -43,6 +45,24 @@ function App() {
                         element={
                             <ProtectedRoute>
                                 <SurveyVote />
+                            </ProtectedRoute>
+                        }
+                    />
+
+                    <Route
+                        path="/surveys/results"
+                        element={
+                            <ProtectedRoute>
+                                <SurveyResultsList />
+                            </ProtectedRoute>
+                        }
+                    />
+
+                    <Route
+                        path="/surveys/results/:id"
+                        element={
+                            <ProtectedRoute>
+                                <SurveySingleResult />
                             </ProtectedRoute>
                         }
                     />

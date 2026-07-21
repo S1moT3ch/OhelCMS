@@ -18,13 +18,15 @@ import {
 } from "@mui/material";
 import AddIcon from "@mui/icons-material/Add";
 import BarChartIcon from "@mui/icons-material/BarChart";
+import AssessmentIcon from "@mui/icons-material/Assessment";
 
-// Palette cromatica Associazione Ohel totalmente differenziata
+// Palette cromatica Associazione Ohel
 const OHEL_GREEN = "#2e5b43";      // Per i sondaggi da compilare (Nuovi)
 const OHEL_SAGE = "#52796f";       // Testi secondari e note
 const OHEL_OCHRE = "#d9922b";      // Per lo stato "Già Compilato / Modifica"
-const OHEL_ORANGE = "#e65f2b";     // ✨ NUOVO: Colore specifico per la Creazione Sondaggi
-const OHEL_BLUE = "#2a6f97";       // Per il registro delle presenze
+const OHEL_ORANGE = "#e65f2b";     // Colore specifico per la Creazione Sondaggi (Admin)
+const OHEL_BLUE = "#2a6f97";       // Per il registro delle presenze (Admin)
+const OHEL_PURPLE = "#6b5b95";     // Colore per i Risultati Sondaggi (Accessibile a tutti i soci)
 const OHEL_LIGHT_GREEN = "#f4f7f5";
 const OHEL_TEXT_DARK = "#1e382b";
 
@@ -81,7 +83,8 @@ function Dashboard() {
         };
 
         inizializzaDashboard();
-    }, []);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [URL_APPS_SCRIPT]);
 
     const handleLogout = () => {
         localStorage.removeItem("authToken");
@@ -143,7 +146,7 @@ function Dashboard() {
                     </CardContent>
                 </Card>
 
-                {/* SEZIONE 1: CARDS FUNZIONE AMMINISTRATIVE (SOLO ADMIN) */}
+                {/* SEZIONE 1: CARDS FUNZIONI AMMINISTRATIVE (SOLO ADMIN) */}
                 {user.isAdmin && (
                     <>
                         <Typography variant="caption" fontWeight="700" sx={{ color: "#406353", textTransform: "uppercase", letterSpacing: "0.05em", pl: 0.5, mt: 0.5 }}>
@@ -151,7 +154,7 @@ function Dashboard() {
                         </Typography>
 
                         <Stack gap={1.5}>
-                            {/* CARD FUNZIONE 1: CREA SONDAGGIO (ARANCIONE ZUCCA) */}
+                            {/* CARD FUNZIONE 1: CREA SONDAGGIO (ARANCIONE) */}
                             <Card sx={{
                                 borderRadius: "20px",
                                 border: "1px solid #e1ebe5",
@@ -188,7 +191,7 @@ function Dashboard() {
                                 </CardContent>
                             </Card>
 
-                            {/* CARD FUNZIONE 2: REGISTRO PRESENZE (BLU REALE) */}
+                            {/* CARD FUNZIONE 2: REGISTRO PRESENZE (BLU) */}
                             <Card sx={{
                                 borderRadius: "20px",
                                 border: "1px solid #e1ebe5",
@@ -228,7 +231,49 @@ function Dashboard() {
                     </>
                 )}
 
-                {/* SEZIONE 2: CONSULTAZIONI E SONDAGGI ATTIVI */}
+                {/* SEZIONE 2: CONSULTAZIONI & RISULTATI PER TUTTI I SOCI */}
+                <Typography variant="caption" fontWeight="700" sx={{ color: "#406353", textTransform: "uppercase", letterSpacing: "0.05em", pl: 0.5, mt: 1.5 }}>
+                    Risultati & Statistiche
+                </Typography>
+
+                {/* ✨ CARD RISULTATI SONDAGGI (ACCESSIBILE A TUTTI) */}
+                <Card sx={{
+                    borderRadius: "20px",
+                    border: "1px solid #e1ebe5",
+                    borderLeft: `5px solid ${OHEL_PURPLE}`,
+                    backgroundColor: "#ffffff",
+                    boxShadow: "0 4px 12px rgba(46, 91, 67, 0.02)"
+                }}>
+                    <CardContent sx={{ p: 2.2 }}>
+                        <Stack direction="row" alignItems="center" gap={1} mb={0.5}>
+                            <AssessmentIcon sx={{ color: OHEL_PURPLE, fontSize: "1.3rem" }} />
+                            <Typography variant="subtitle1" fontWeight="800" sx={{ color: OHEL_TEXT_DARK }}>
+                                Risultati dei Sondaggi
+                            </Typography>
+                        </Stack>
+                        <Typography variant="body2" sx={{ color: "#52796f", mb: 2, pl: 3.6, fontSize: "0.85rem", lineHeight: 1.3 }}>
+                            Consulta le preferenze espresse dalla comunità e i report riassuntivi delle consultazioni.
+                        </Typography>
+                        <Button
+                            variant="contained"
+                            fullWidth
+                            onClick={() => navigate("/surveys/results")}
+                            sx={{
+                                backgroundColor: OHEL_PURPLE,
+                                color: "#ffffff",
+                                borderRadius: "12px",
+                                textTransform: "none",
+                                fontWeight: "700",
+                                boxShadow: "0 4px 12px rgba(107, 91, 149, 0.15)",
+                                "&:hover": { backgroundColor: "#52467b" }
+                            }}
+                        >
+                            Vedi Risultati Sondaggi →
+                        </Button>
+                    </CardContent>
+                </Card>
+
+                {/* SEZIONE 3: SONDAGGI E CONSULTAZIONI ATTIVE */}
                 <Typography variant="caption" fontWeight="700" sx={{ color: "#406353", textTransform: "uppercase", letterSpacing: "0.05em", pl: 0.5, mt: 1.5 }}>
                     Sondaggi e Consultazioni Attive
                 </Typography>
@@ -273,7 +318,7 @@ function Dashboard() {
                                             "&:hover": { backgroundColor: survey.voted ? "#bd7f22" : OHEL_TEXT_DARK }
                                         }}
                                     >
-                                        {survey.voted ? "✏️ Modifica Disponibilità →" : "Compila Disponibilità →"}
+                                        {survey.voted ? "✏️ Visualizza le tue risposte →" : "Compila Disponibilità →"}
                                     </Button>
                                 </CardContent>
                             </Card>
