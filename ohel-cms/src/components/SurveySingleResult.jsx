@@ -14,7 +14,6 @@ import {
     ListItem,
     ListItemIcon,
     ListItemText,
-    CircularProgress,
     Fade,
     Menu,
     MenuItem,
@@ -31,6 +30,8 @@ import CalendarMonthIcon from "@mui/icons-material/CalendarMonth";
 import FilterListIcon from "@mui/icons-material/FilterList";
 
 import DateDetailsDialog from "./DateDetailsDialog";
+import { getCache, setCache, clearAllCache } from "../utils/cacheManager";
+import LoadingScreen from "./LoadingScreen";
 
 const OHEL_LIGHT_GREEN = "#f4f7f5";
 
@@ -65,8 +66,20 @@ const SurveySingleResult = () => {
                 return;
             }
 
+            // Tenta caricamento immediato da cache
+            const cachedAllVotes = getCache(`survey_all_votes_${id}`);
+            if (cachedAllVotes && cachedAllVotes.data) {
+                if (cachedAllVotes.data.surveyTitle) setSurveyTitle(cachedAllVotes.data.surveyTitle);
+                if (cachedAllVotes.data.dateDetailsMap) setDateDetailsMap(cachedAllVotes.data.dateDetailsMap);
+                if (cachedAllVotes.data.groupedData) setGroupedData(cachedAllVotes.data.groupedData);
+                setLoading(false);
+            }
+
             try {
                 const currentUser = JSON.parse(storedUserProfile);
+
+                let currentSurveyTitle = surveyTitle;
+                let currentDetailsMap = dateDetailsMap;
 
                 // 1. Dettagli configurazione sondaggio
                 const resActive = await fetch(`${URL_APPS_SCRIPT}?action=GET_ACTIVE_SURVEYS&email=${encodeURIComponent(currentUser.email)}`);
@@ -75,12 +88,14 @@ const SurveySingleResult = () => {
                 if (dataActive.status === "success") {
                     const currentSurvey = dataActive.surveys.find(s => s.idSondaggio === `SURV_${id}` || s.idSondaggio === id);
                     if (currentSurvey) {
-                        setSurveyTitle(currentSurvey.title);
+                        currentSurveyTitle = currentSurvey.title;
+                        setSurveyTitle(currentSurveyTitle);
                         const detailsMap = {};
                         currentSurvey.dates.forEach(d => {
                             detailsMap[d.date] = d;
                         });
-                        setDateDetailsMap(detailsMap);
+                        currentDetailsMap = detailsMap;
+                        setDateDetailsMap(currentDetailsMap);
                     }
                 }
 
@@ -118,6 +133,11 @@ const SurveySingleResult = () => {
                     });
 
                     setGroupedData(parsedGrouped);
+                    setCache(`survey_all_votes_${id}`, {
+                        surveyTitle: currentSurveyTitle,
+                        dateDetailsMap: currentDetailsMap,
+                        groupedData: parsedGrouped
+                    }, 5 * 60 * 1000);
                 }
             } catch (err) {
                 console.error("Errore nel caricamento delle disponibilità:", err);
@@ -131,8 +151,7 @@ const SurveySingleResult = () => {
     }, [id, URL_APPS_SCRIPT]);
 
     const handleLogout = () => {
-        localStorage.removeItem("authToken");
-        localStorage.removeItem("userProfile");
+        clearAllCache();
         navigate("/", { replace: true });
     };
 
@@ -295,9 +314,7 @@ const SurveySingleResult = () => {
                 </Card>
 
                 {loading ? (
-                    <Box sx={{ display: "flex", justifyContent: "center", my: 6 }}>
-                        <CircularProgress color="primary" />
-                    </Box>
+                    <LoadingScreen message="Elaborazione risultati..." fullScreen={false} color="#6b5b95" />
                 ) : (
                     <Stack gap={2}>
                         {sortedDates.length === 0 ? (

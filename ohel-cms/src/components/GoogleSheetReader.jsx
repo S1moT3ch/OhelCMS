@@ -10,7 +10,6 @@ import {
     ListItem,
     ListItemIcon,
     ListItemText,
-    CircularProgress,
     Fade,
     Menu,
     MenuItem,
@@ -30,13 +29,15 @@ import ArrowBackIcon from "@mui/icons-material/ArrowBack";
 import { useNavigate } from "react-router-dom";
 
 import DateDetailsDialog from "./DateDetailsDialog";
+import LoadingScreen from "./LoadingScreen";
+import { getCache, setCache } from "../utils/cacheManager";
 
 const GoogleSheetReader = () => {
     const navigate = useNavigate();
 
     const [groupedData, setGroupedData] = useState({});
     const [loading, setLoading] = useState(true);
-    const [associationYear, setAssociationYear] = useState([]);
+    const [associationYear, setAssociationYear] = useState(null);
     const [sortType, setSortType] = useState("chronological");
     const [anchorEl, setAnchorEl] = useState(null);
     const [showPastDates, setShowPastDates] = useState(false); // NUOVO
@@ -52,6 +53,15 @@ const GoogleSheetReader = () => {
 
     useEffect(() => {
         const fetchSheetData = async () => {
+            // Controlla cache locale
+            const cached = getCache("sheet_availability_data");
+            if (cached) {
+                setGroupedData(cached.data.groupedData || {});
+                setRawRows(cached.data.rawRows || []);
+                setHeaderRow(cached.data.headerRow || []);
+                setLoading(false);
+            }
+
             const { SHEET_ID, API_KEY, RANGE } = CONFIG;
             const url = `https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}/values/${encodeURIComponent(
                 RANGE
@@ -98,6 +108,7 @@ const GoogleSheetReader = () => {
                 });
 
                 setGroupedData(grouped);
+                setCache("sheet_availability_data", { groupedData: grouped, rawRows: dataRows, headerRow: header }, 10 * 60 * 1000);
             } catch (err) {
                 console.error("Errore nel caricamento dei dati:", err);
             } finally {
@@ -110,26 +121,37 @@ const GoogleSheetReader = () => {
 
     useEffect(() => {
         const fetchAssociationYear = async () => {
+            const cachedYear = getCache("sheet_association_year");
+            if (cachedYear) {
+                setAssociationYear(cachedYear.data);
+            }
 
-            const { API_KEY } = CONFIG;
-            const SHEET_ID = "1OMAGTsjjBQG1lGnn3GmTszjSQ4F1f4gagl7A7usb_lA";
-            const RANGE = "Foglio1"
+            try {
+                const { API_KEY } = CONFIG;
+                const SHEET_ID = "1OMAGTsjjBQG1lGnn3GmTszjSQ4F1f4gagl7A7usb_lA";
+                const RANGE = "Foglio1";
 
-            const url = `https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}/values/${RANGE}?key=${API_KEY}`;
-            const res = await fetch(url);
-            const data = await res.json();
+                const url = `https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}/values/${RANGE}?key=${API_KEY}`;
+                const res = await fetch(url);
+                const data = await res.json();
 
-            // Trova la prima riga che contiene un numero valido
-            const rowWithYear = data.values.find(
-                row => row && row.length > 1 && !isNaN(parseInt(row[1], 10))
-            );
-
-            setAssociationYear(rowWithYear ? parseInt(rowWithYear[1], 10) : null);
-            console.log(associationYear);
+                if (data && data.values) {
+                    const rowWithYear = data.values.find(
+                        row => row && row.length > 1 && !isNaN(parseInt(row[1], 10))
+                    );
+                    const yearVal = rowWithYear ? parseInt(rowWithYear[1], 10) : null;
+                    setAssociationYear(yearVal);
+                    if (yearVal) {
+                        setCache("sheet_association_year", yearVal, 60 * 60 * 1000);
+                    }
+                }
+            } catch (err) {
+                console.error("Errore nel recupero dell'anno associativo:", err);
+            }
         };
 
         fetchAssociationYear();
-    }, [associationYear]);
+    }, []);
 
     // Funzione per contare intolleranze per una data
     // Controlla intolleranze per ogni data separando i nomi multipli
@@ -367,7 +389,7 @@ const GoogleSheetReader = () => {
 
             <Container maxWidth="md" sx={{ py: 4, flexGrow: 1 }}>
                 {loading ? (
-                    <Box sx={{ display: "flex", justifyContent: "center", mt: 8 }}><CircularProgress color="primary" /></Box>
+                    <LoadingScreen message="Caricamento presenze..." fullScreen={false} />
                 ) : (
                     <>
                         <Box sx={{ textAlign: "center", mb: 2 }}>

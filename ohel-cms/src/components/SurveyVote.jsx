@@ -3,6 +3,9 @@ import { useParams, useNavigate } from "react-router-dom";
 import CONFIG from "../config/config";
 import HeaderCompact from "./HeaderCompact";
 import Footer from "../components/Footer";
+import { getCache, setCache, clearCachePattern, clearAllCache } from "../utils/cacheManager";
+import LoadingScreen from "./LoadingScreen";
+import MessageDialog from "./MessageDialog";
 
 // Importazioni Material-UI
 import {
@@ -12,7 +15,6 @@ import {
     CardContent,
     Typography,
     Button,
-    CircularProgress,
     Stack,
     Chip,
     Divider,
@@ -61,6 +63,11 @@ function SurveyVote() {
 
     // Info su eventuale delegato (se compilato da un altro familiare)
     const [compiledByInfo, setCompiledByInfo] = useState(null);
+    const [dialog, setDialog] = useState({ open: false, title: "", message: "", severity: "info", callback: null });
+
+    const showDialog = (title, message, severity = "info", callback = null) => {
+        setDialog({ open: true, title, message, severity, callback });
+    };
 
     // Step: 0: Gestione Membri Gruppo, 1: Turni, 2: Alimentazione, 3: Note, 4: Riepilogo Finale
     const [step, setStep] = useState(0);
@@ -93,6 +100,32 @@ function SurveyVote() {
             const currentUser = JSON.parse(storedUserProfile);
             const mainMemberName = `${currentUser.nome} ${currentUser.cognome}`.trim();
 
+            // Caricamento da cache locale per avvio istantaneo
+            const cachedActiveSurveys = getCache(`surveys_active_${currentUser.email}`);
+            if (cachedActiveSurveys && cachedActiveSurveys.data) {
+                const targetSurveyCached = cachedActiveSurveys.data.find(s => s.idSondaggio === `SURV_${id}`);
+                if (targetSurveyCached) {
+                    setSurvey(targetSurveyCached);
+                    setMembers([mainMemberName]);
+
+                    if (targetSurveyCached.voted) {
+                        setIsReadOnly(true);
+                        const cachedVotes = getCache(`survey_user_votes_${id}_${currentUser.email}`);
+                        if (cachedVotes && cachedVotes.data?.dataByMember) {
+                            const retrievedMembers = Object.keys(cachedVotes.data.dataByMember);
+                            if (retrievedMembers.length > 0) {
+                                setMembers(retrievedMembers);
+                                setMemberResponses(cachedVotes.data.dataByMember);
+                            }
+                            if (cachedVotes.data.compiledForYouBy && cachedVotes.data.compiledForYouBy.isDelegated) {
+                                setCompiledByInfo(cachedVotes.data.compiledForYouBy);
+                            }
+                        }
+                    }
+                    setLoading(false);
+                }
+            }
+
             try {
                 const response = await fetch(`${URL_APPS_SCRIPT}?action=GET_ACTIVE_SURVEYS&email=${encodeURIComponent(currentUser.email)}`, {
                     method: "GET",
@@ -101,10 +134,10 @@ function SurveyVote() {
                 const data = await response.json();
 
                 if (data.status === "success") {
+                    setCache(`surveys_active_${currentUser.email}`, data.surveys, 5 * 60 * 1000);
                     const targetSurvey = data.surveys.find(s => s.idSondaggio === `SURV_${id}`);
                     if (!targetSurvey) {
-                        alert("Sondaggio non trovato o non più attivo.");
-                        navigate("/dashboard");
+                        showDialog("Sondaggio Non Disponibile", "Sondaggio non trovato o non più attivo.", "warning", () => navigate("/dashboard"));
                         return;
                     }
 
@@ -140,6 +173,7 @@ function SurveyVote() {
                         const dataVotes = await responseVotes.json();
 
                         if (dataVotes.status === "success" && dataVotes.dataByMember) {
+                            setCache(`survey_user_votes_${id}_${currentUser.email}`, dataVotes, 5 * 60 * 1000);
                             const retrievedMembers = Object.keys(dataVotes.dataByMember);
                             if (retrievedMembers.length > 0) {
                                 setMembers(retrievedMembers);
@@ -156,11 +190,11 @@ function SurveyVote() {
                     }
 
                 } else {
-                    alert("Errore nel recupero dati: " + data.message);
+                    showDialog("Errore Recupero Dati", data.message, "error");
                 }
             } catch (err) {
                 console.error("Errore nel caricamento del sondaggio:", err);
-                alert("Impossibile connettersi al server del backend.");
+                showDialog("Errore Connessione", "Impossibile connettersi al server del backend.", "error");
             } finally {
                 setLoading(false);
             }
@@ -171,8 +205,7 @@ function SurveyVote() {
     }, [id, URL_APPS_SCRIPT, navigate]);
 
     const handleLogout = () => {
-        localStorage.removeItem("authToken");
-        localStorage.removeItem("userProfile");
+        clearAllCache();
         navigate("/", { replace: true });
     };
 
@@ -182,14 +215,14 @@ function SurveyVote() {
         const cognomeTrimmed = newMemberLastName.trim();
 
         if (!nomeTrimmed || !cognomeTrimmed) {
-            alert("Per favore inserisci sia il Nome che il Cognome del familiare.");
+            showDialog("Dati Incompleti", "Per favore inserisci sia il Nome che il Cognome del familiare.", "warning");
             return;
         }
 
         const fullName = `${nomeTrimmed} ${cognomeTrimmed}`;
 
         if (members.includes(fullName)) {
-            alert("Questo membro è già presente nell'elenco.");
+            showDialog("Membro Esistente", "Questo membro è già presente nell'elenco.", "warning");
             return;
         }
 
@@ -220,7 +253,7 @@ function SurveyVote() {
 
     const handleRemoveMember = (name) => {
         if (members.indexOf(name) === 0) {
-            alert("Non puoi rimuovere l'utente titolare del profilo.");
+            showDialog("Azione Non Consentita", "Non puoi rimuovere l'utente titolare del profilo.", "warning");
             return;
         }
         setMembers(members.filter(m => m !== name));
@@ -232,44 +265,47 @@ function SurveyVote() {
 
     const handleSlotClick = (dateStr, slot) => {
         const currentMember = members[activeMemberIdx];
-        const memberData = memberResponses[currentMember];
+        if (!currentMember) return;
+        const memberData = memberResponses[currentMember] || { selections: {}, absences: {} };
 
-        const currentAbsences = { ...memberData.absences, [dateStr]: false };
-        const currentSlots = memberData.selections[dateStr] || [];
+        const currentAbsences = { ...(memberData.absences || {}), [dateStr]: false };
+        const currentSlots = memberData.selections?.[dateStr] || [];
 
         let updatedSlots = currentSlots.includes(slot)
             ? currentSlots.filter(s => s !== slot)
             : [...currentSlots, slot];
 
-        setMemberResponses({
-            ...memberResponses,
+        setMemberResponses(prev => ({
+            ...prev,
             [currentMember]: {
                 ...memberData,
                 absences: currentAbsences,
-                selections: { ...memberData.selections, [dateStr]: updatedSlots }
+                selections: { ...(memberData.selections || {}), [dateStr]: updatedSlots }
             }
-        });
+        }));
     };
 
     const handleAbsenceClick = (dateStr) => {
         const currentMember = members[activeMemberIdx];
-        const memberData = memberResponses[currentMember];
-        const isCurrentlyAbsent = !!memberData.absences[dateStr];
+        if (!currentMember) return;
+        const memberData = memberResponses[currentMember] || { selections: {}, absences: {} };
+        const isCurrentlyAbsent = !!(memberData.absences?.[dateStr]);
 
-        setMemberResponses({
-            ...memberResponses,
+        setMemberResponses(prev => ({
+            ...prev,
             [currentMember]: {
                 ...memberData,
-                absences: { ...memberData.absences, [dateStr]: !isCurrentlyAbsent },
+                absences: { ...(memberData.absences || {}), [dateStr]: !isCurrentlyAbsent },
                 selections: !isCurrentlyAbsent
-                    ? { ...memberData.selections, [dateStr]: [] }
-                    : memberData.selections
+                    ? { ...(memberData.selections || {}), [dateStr]: [] }
+                    : (memberData.selections || {})
             }
-        });
+        }));
     };
 
     const handleIntoleranceChange = (option) => {
         const currentMember = members[activeMemberIdx];
+        if (!currentMember) return;
         const memberData = memberResponses[currentMember] || {};
         const currentIntolerances = memberData.selectedIntolerances || [];
 
@@ -280,39 +316,41 @@ function SurveyVote() {
             updated.push(option);
         }
 
-        setMemberResponses({
-            ...memberResponses,
+        setMemberResponses(prev => ({
+            ...prev,
             [currentMember]: {
                 ...memberData,
                 selectedIntolerances: updated
             }
-        });
+        }));
     };
 
     const handleCustomIntoleranceChange = (value) => {
         const currentMember = members[activeMemberIdx];
+        if (!currentMember) return;
         const memberData = memberResponses[currentMember] || {};
 
-        setMemberResponses({
-            ...memberResponses,
+        setMemberResponses(prev => ({
+            ...prev,
             [currentMember]: {
                 ...memberData,
                 customIntolerance: value
             }
-        });
+        }));
     };
 
     const handleGeneralNotesChange = (value) => {
         const currentMember = members[activeMemberIdx];
+        if (!currentMember) return;
         const memberData = memberResponses[currentMember] || {};
 
-        setMemberResponses({
-            ...memberResponses,
+        setMemberResponses(prev => ({
+            ...prev,
             [currentMember]: {
                 ...memberData,
                 generalNotes: value
             }
-        });
+        }));
     };
 
     const formatDateItalian = (dateValue) => {
@@ -334,16 +372,52 @@ function SurveyVote() {
 
         if (step === 0) {
             if (members.length === 0) {
-                alert("Inserisci almeno un partecipante.");
+                showDialog("Nessun Partecipante", "Inserisci almeno un partecipante prima di proseguire.", "warning");
                 return;
             }
+
+            // Inizializza i membri del nucleo in memberResponses
+            setMemberResponses(prev => {
+                const nextResponses = { ...prev };
+                members.forEach(m => {
+                    if (!nextResponses[m] || !nextResponses[m].selections) {
+                        const sel = {};
+                        const abs = {};
+                        (survey?.dates || []).forEach(d => {
+                            sel[d.date] = [];
+                            abs[d.date] = false;
+                        });
+                        nextResponses[m] = {
+                            selections: sel,
+                            absences: abs,
+                            selectedIntolerances: [],
+                            customIntolerance: "",
+                            generalNotes: ""
+                        };
+                    }
+                });
+                return nextResponses;
+            });
+
             setActiveMemberIdx(0);
             setStep(1);
         } else if (step === 1) {
-            const mData = memberResponses[currentMember];
-            const incomplete = survey?.dates.filter(d => (mData.selections[d.date]?.length || 0) === 0 && !mData.absences[d.date]);
+            const mData = memberResponses[currentMember] || {};
+            const selections = mData.selections || {};
+            const absences = mData.absences || {};
+
+            const incomplete = (survey?.dates || []).filter(d => {
+                const slotList = selections[d.date] || [];
+                const isAbsent = Boolean(absences[d.date]);
+                return slotList.length === 0 && !isAbsent;
+            });
+
             if (incomplete && incomplete.length > 0) {
-                alert(`Indica la disponibilità per tutte le date per: ${currentMember}`);
+                showDialog(
+                    "Disponibilità Incomplete",
+                    `Indica la disponibilità o l'assenza per tutte le date per: ${currentMember}`,
+                    "warning"
+                );
                 return;
             }
             setStep(2);
@@ -401,15 +475,23 @@ function SurveyVote() {
             const data = await response.json();
 
             if (data.status === "success") {
-                alert("🎉 Disponibilità salvate con successo!");
+                clearCachePattern("surveys_active");
+                clearCachePattern(`survey_user_votes_${id}`);
+                clearCachePattern(`survey_all_votes_${id}`);
+                showDialog(
+                    "Salvataggio Completato",
+                    "🎉 Le tue disponibilità sono state salvate con successo!",
+                    "success",
+                    () => navigate("/dashboard")
+                );
                 setIsReadOnly(true);
                 setStep(0);
             } else {
-                alert("Errore durante l'invio: " + data.message);
+                showDialog("Errore Invio", "Errore durante l'invio delle disponibilità: " + data.message, "error");
             }
         } catch (err) {
             console.error("Errore durante il salvataggio dei voti:", err);
-            alert("Errore di connessione. Riprova più tardi.");
+            showDialog("Errore Connessione", "Impossibile connettersi al server. Riprova più tardi.", "error");
         } finally {
             setSubmitting(false);
         }
@@ -420,11 +502,7 @@ function SurveyVote() {
     const isMainUser = activeMemberIdx === 0;
 
     if (loading) {
-        return (
-            <Box display="flex" justifyContent="center" alignItems="center" minHeight="100vh" backgroundColor={OHEL_LIGHT_GREEN}>
-                <CircularProgress size={50} sx={{ color: OHEL_GREEN }} />
-            </Box>
-        );
+        return <LoadingScreen message="Caricamento sondaggio..." color="#2e5b43" />;
     }
 
     return (
@@ -911,6 +989,17 @@ function SurveyVote() {
 
             </Container>
             <Footer />
+
+            <MessageDialog
+                open={dialog.open}
+                onClose={() => {
+                    setDialog(prev => ({ ...prev, open: false }));
+                    if (dialog.callback) dialog.callback();
+                }}
+                title={dialog.title}
+                message={dialog.message}
+                severity={dialog.severity}
+            />
         </Box>
     );
 }

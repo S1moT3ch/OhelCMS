@@ -3,6 +3,9 @@ import { useNavigate } from "react-router-dom";
 import CONFIG from "../config/config";
 import HeaderCompact from "./HeaderCompact";
 import Footer from "../components/Footer";
+import { getCache, setCache, clearAllCache } from "../utils/cacheManager";
+import { prefetchBackgroundData } from "../utils/prefetchManager";
+import LoadingScreen from "./LoadingScreen";
 
 // Importazioni Material-UI
 import {
@@ -13,20 +16,27 @@ import {
     Card,
     CardContent,
     Avatar,
-    CircularProgress,
-    Stack
+    Stack,
+    Chip,
 } from "@mui/material";
 import AddIcon from "@mui/icons-material/Add";
 import BarChartIcon from "@mui/icons-material/BarChart";
 import AssessmentIcon from "@mui/icons-material/Assessment";
+import CalendarMonthIcon from "@mui/icons-material/CalendarMonth";
+import CheckCircleOutlineIcon from "@mui/icons-material/CheckCircleOutline";
+import HowToVoteIcon from "@mui/icons-material/HowToVote";
+import AdminPanelSettingsIcon from "@mui/icons-material/AdminPanelSettings";
+import PersonIcon from "@mui/icons-material/Person";
+import TuneIcon from "@mui/icons-material/Tune";
 
 // Palette cromatica Associazione Ohel
-const OHEL_GREEN = "#2e5b43";      // Per i sondaggi da compilare (Nuovi)
+const OHEL_GREEN = "#2e5b43";      // Verde brand Ohel (Sondaggi da compilare)
 const OHEL_SAGE = "#52796f";       // Testi secondari e note
-const OHEL_OCHRE = "#d9922b";      // Per lo stato "Già Compilato / Modifica"
-const OHEL_ORANGE = "#e65f2b";     // Colore specifico per la Creazione Sondaggi (Admin)
-const OHEL_BLUE = "#2a6f97";       // Per il registro delle presenze (Admin)
-const OHEL_PURPLE = "#6b5b95";     // Colore per i Risultati Sondaggi (Accessibile a tutti i soci)
+const OHEL_OCHRE = "#d9922b";      // Ocra (Sondaggi già compilati)
+const OHEL_ORANGE = "#e65f2b";     // Arancione (Creazione Sondaggi Admin)
+const OHEL_BLUE = "#2a6f97";       // Blu (Registro presenze Admin)
+const OHEL_PURPLE = "#6b5b95";     // Viola (Risultati Sondaggi)
+const OHEL_TEAL = "#0f766e";       // Verde Smeraldo (Gestione Sondaggi Admin)
 const OHEL_LIGHT_GREEN = "#f4f7f5";
 const OHEL_TEXT_DARK = "#1e382b";
 
@@ -47,36 +57,78 @@ function Dashboard() {
                 return;
             }
 
+            let initialEmail = null;
+            const storedUser = localStorage.getItem("userProfile");
+            if (storedUser) {
+                try {
+                    const parsedUser = JSON.parse(storedUser);
+                    setUser(parsedUser);
+                    if (parsedUser?.email) {
+                        initialEmail = parsedUser.email;
+                        const cachedSurveys = getCache(`surveys_active_${parsedUser.email}`);
+                        if (cachedSurveys) {
+                            setSurveys(cachedSurveys.data || []);
+                            setLoading(false);
+                            prefetchBackgroundData(parsedUser.email, cachedSurveys.data || [], Boolean(parsedUser.isAdmin));
+                        }
+                    }
+                } catch (e) {
+                    console.warn("Errore parsing userProfile locale:", e);
+                }
+            }
+
             try {
-                const responseUser = await fetch(URL_APPS_SCRIPT, {
+                const loginPromise = fetch(URL_APPS_SCRIPT, {
                     method: "POST",
                     mode: "cors",
                     body: JSON.stringify({ action: "LOGIN", token: idToken }),
                 });
+
+                const surveysPromise = initialEmail
+                    ? fetch(`${URL_APPS_SCRIPT}?action=GET_ACTIVE_SURVEYS&email=${encodeURIComponent(initialEmail)}`, { method: "GET", mode: "cors" })
+                    : null;
+
+                const [responseUser, responseSurveysInitial] = await Promise.all([
+                    loginPromise,
+                    surveysPromise
+                ]);
+
                 const dataUser = await responseUser.json();
 
                 if (dataUser.status === "success" && dataUser.exists) {
                     setUser(dataUser.user);
+                    localStorage.setItem("userProfile", JSON.stringify(dataUser.user));
 
-                    const responseSurveys = await fetch(
-                        `${URL_APPS_SCRIPT}?action=GET_ACTIVE_SURVEYS&email=${encodeURIComponent(dataUser.user.email)}`,
-                        {
-                            method: "GET",
-                            mode: "cors"
+                    let finalSurveys = [];
+                    if (responseSurveysInitial) {
+                        const dataSurveys = await responseSurveysInitial.json();
+                        if (dataSurveys.status === "success") {
+                            finalSurveys = dataSurveys.surveys || [];
                         }
-                    );
-                    const dataSurveys = await responseSurveys.json();
-
-                    if (dataSurveys.status === "success") {
-                        setSurveys(dataSurveys.surveys);
+                    } else {
+                        const responseSurveys = await fetch(
+                            `${URL_APPS_SCRIPT}?action=GET_ACTIVE_SURVEYS&email=${encodeURIComponent(dataUser.user.email)}`,
+                            {
+                                method: "GET",
+                                mode: "cors"
+                            }
+                        );
+                        const dataSurveys = await responseSurveys.json();
+                        if (dataSurveys.status === "success") {
+                            finalSurveys = dataSurveys.surveys || [];
+                        }
                     }
+
+                    setSurveys(finalSurveys);
+                    setCache(`surveys_active_${dataUser.user.email}`, finalSurveys, 5 * 60 * 1000);
+                    prefetchBackgroundData(dataUser.user.email, finalSurveys, Boolean(dataUser.user.isAdmin));
                 } else {
                     handleLogout();
                 }
             } catch (err) {
                 console.error("Errore durante il caricamento dei dati della dashboard:", err);
-                const storedUser = localStorage.getItem("userProfile");
-                if (storedUser) setUser(JSON.parse(storedUser));
+                const storedUserFallback = localStorage.getItem("userProfile");
+                if (storedUserFallback) setUser(JSON.parse(storedUserFallback));
             } finally {
                 setLoading(false);
             }
@@ -87,22 +139,17 @@ function Dashboard() {
     }, [URL_APPS_SCRIPT]);
 
     const handleLogout = () => {
-        localStorage.removeItem("authToken");
-        localStorage.removeItem("userProfile");
+        clearAllCache();
         navigate("/", { replace: true });
     };
 
     const getDatesCountLabel = (datesArray) => {
-        if (!datesArray || datesArray.length === 0) return "Nessuna data configurata";
-        return datesArray.length === 1 ? "1 data disponibile" : `${datesArray.length} date disponibili`;
+        if (!datesArray || datesArray.length === 0) return "Nessuna data";
+        return datesArray.length === 1 ? "1 data" : `${datesArray.length} date`;
     };
 
     if (loading) {
-        return (
-            <Box display="flex" justifyContent="center" alignItems="center" minHeight="100vh" backgroundColor={OHEL_LIGHT_GREEN}>
-                <CircularProgress size={50} sx={{ color: OHEL_GREEN }} />
-            </Box>
-        );
+        return <LoadingScreen message="Caricamento Dashboard..." color={OHEL_GREEN} />;
     }
 
     if (!user) {
@@ -113,230 +160,437 @@ function Dashboard() {
         );
     }
 
+    const pendingSurveysCount = surveys.filter(s => !s.voted).length;
+
     return (
-        <Box sx={{ display: "flex", flexDirection: "column", minHeight: "100vh", backgroundColor: OHEL_LIGHT_GREEN, pt: "84px", boxSizing: "border-box" }}>
+        <Box sx={{
+            minHeight: "100vh",
+            display: "flex",
+            flexDirection: "column",
+            backgroundColor: OHEL_LIGHT_GREEN,
+            boxSizing: "border-box",
+            pt: "72px"
+        }}>
             <HeaderCompact onLogout={handleLogout} />
 
-            <Container maxWidth="xs" sx={{ flexGrow: 1, display: "flex", flexDirection: "column", gap: 2, mt: 1 }}>
+            <Container maxWidth="md" sx={{
+                flex: 1,
+                display: "flex",
+                flexDirection: "column",
+                justifyContent: "space-between",
+                py: 2,
+                px: { xs: 2, sm: 3 },
+                boxSizing: "border-box"
+            }}>
 
-                {/* CARD PROFILO UTENTE */}
-                <Card sx={{ borderRadius: "20px", border: "1px solid #e1ebe5", boxShadow: "0 4px 12px rgba(46, 91, 67, 0.03)" }}>
-                    <CardContent sx={{ p: 2.5, "&:last-child": { pb: 2.5 } }}>
-                        <Box display="flex" alignItems="center" gap={2}>
-                            {user.picture ? (
-                                <Avatar
-                                    src={user.picture.replace(/\s+/g, '')}
-                                    alt="Profilo"
-                                    sx={{ width: 56, height: 56, border: `2px solid ${OHEL_GREEN}` }}
-                                />
-                            ) : (
-                                <Avatar sx={{ width: 56, height: 56, backgroundColor: OHEL_GREEN, fontWeight: "750" }}>
-                                    {user.nome.charAt(0)}
-                                </Avatar>
-                            )}
-                            <Box>
-                                <Typography variant="h6" fontWeight="750" sx={{ color: OHEL_TEXT_DARK }}>
-                                    Ciao, {user.nome}!
-                                </Typography>
-                                <Typography variant="caption" sx={{ color: OHEL_SAGE, fontWeight: 600 }}>
-                                    {user.isAdmin ? "Pannello Amministratore" : "Area Socio"}
-                                </Typography>
-                            </Box>
-                        </Box>
-                    </CardContent>
-                </Card>
-
-                {/* SEZIONE 1: CARDS FUNZIONI AMMINISTRATIVE (SOLO ADMIN) */}
-                {user.isAdmin && (
-                    <>
-                        <Typography variant="caption" fontWeight="700" sx={{ color: "#406353", textTransform: "uppercase", letterSpacing: "0.05em", pl: 0.5, mt: 0.5 }}>
-                            Strumenti Gestione Admin
-                        </Typography>
-
-                        <Stack gap={1.5}>
-                            {/* CARD FUNZIONE 1: CREA SONDAGGIO (ARANCIONE) */}
-                            <Card sx={{
-                                borderRadius: "20px",
-                                border: "1px solid #e1ebe5",
-                                borderLeft: `5px solid ${OHEL_ORANGE}`,
-                                backgroundColor: "#ffffff",
-                                boxShadow: "0 4px 12px rgba(46, 91, 67, 0.02)"
-                            }}>
-                                <CardContent sx={{ p: 2.2 }}>
-                                    <Stack direction="row" alignItems="center" gap={1} mb={0.5}>
-                                        <AddIcon sx={{ color: OHEL_ORANGE, fontSize: "1.3rem" }} />
-                                        <Typography variant="subtitle1" fontWeight="800" sx={{ color: OHEL_TEXT_DARK }}>
-                                            Nuovo Sondaggio Presenze
-                                        </Typography>
-                                    </Stack>
-                                    <Typography variant="body2" sx={{ color: "#52796f", mb: 2, pl: 3.6, fontSize: "0.85rem", lineHeight: 1.3 }}>
-                                        Configura e pubblica nuove date e fasce orarie per raccogliere la disponibilità dei soci.
-                                    </Typography>
-                                    <Button
-                                        variant="contained"
-                                        fullWidth
-                                        onClick={() => navigate("/surveys/edit")}
-                                        sx={{
-                                            backgroundColor: OHEL_ORANGE,
-                                            color: "#ffffff",
-                                            borderRadius: "12px",
-                                            textTransform: "none",
-                                            fontWeight: "700",
-                                            boxShadow: "0 4px 12px rgba(230, 95, 43, 0.15)",
-                                            "&:hover": { backgroundColor: "#c2410c" }
-                                        }}
-                                    >
-                                        Apri Configurazione →
-                                    </Button>
-                                </CardContent>
-                            </Card>
-
-                            {/* CARD FUNZIONE 2: REGISTRO PRESENZE (BLU) */}
-                            <Card sx={{
-                                borderRadius: "20px",
-                                border: "1px solid #e1ebe5",
-                                borderLeft: `5px solid ${OHEL_BLUE}`,
-                                backgroundColor: "#ffffff",
-                                boxShadow: "0 4px 12px rgba(46, 91, 67, 0.02)"
-                            }}>
-                                <CardContent sx={{ p: 2.2 }}>
-                                    <Stack direction="row" alignItems="center" gap={1} mb={0.5}>
-                                        <BarChartIcon sx={{ color: OHEL_BLUE, fontSize: "1.3rem" }} />
-                                        <Typography variant="subtitle1" fontWeight="800" sx={{ color: OHEL_TEXT_DARK }}>
-                                            Registro Presenze Completo
-                                        </Typography>
-                                    </Stack>
-                                    <Typography variant="body2" sx={{ color: "#52796f", mb: 2, pl: 3.6, fontSize: "0.85rem", lineHeight: 1.3 }}>
-                                        Visualizza i dati aggregati, le statistiche dei turni compilati e i profili alimentari.
-                                    </Typography>
-                                    <Button
-                                        variant="contained"
-                                        fullWidth
-                                        onClick={() => navigate("/disponibilita")}
-                                        sx={{
-                                            backgroundColor: OHEL_BLUE,
-                                            color: "#ffffff",
-                                            borderRadius: "12px",
-                                            textTransform: "none",
-                                            fontWeight: "700",
-                                            boxShadow: "0 4px 12px rgba(42, 111, 151, 0.15)",
-                                            "&:hover": { backgroundColor: "#1d4ed8" }
-                                        }}
-                                    >
-                                        Consulta i Dati →
-                                    </Button>
-                                </CardContent>
-                            </Card>
-                        </Stack>
-                    </>
-                )}
-
-                {/* SEZIONE 2: CONSULTAZIONI & RISULTATI PER TUTTI I SOCI */}
-                <Typography variant="caption" fontWeight="700" sx={{ color: "#406353", textTransform: "uppercase", letterSpacing: "0.05em", pl: 0.5, mt: 1.5 }}>
-                    Risultati & Statistiche
-                </Typography>
-
-                {/* ✨ CARD RISULTATI SONDAGGI (ACCESSIBILE A TUTTI) */}
-                <Card sx={{
-                    borderRadius: "20px",
-                    border: "1px solid #e1ebe5",
-                    borderLeft: `5px solid ${OHEL_PURPLE}`,
-                    backgroundColor: "#ffffff",
-                    boxShadow: "0 4px 12px rgba(46, 91, 67, 0.02)"
+                {/* GRIGLIA BENTO BOX CON SCHEDE PIÙ ALTE ED ELEGANTE ALTEZZA */}
+                <Box sx={{
+                    display: "grid",
+                    gridTemplateColumns: { xs: "repeat(2, 1fr)", sm: "repeat(12, 1fr)" },
+                    gap: 1.8,
+                    flex: 1,
+                    alignContent: "start"
                 }}>
-                    <CardContent sx={{ p: 2.2 }}>
-                        <Stack direction="row" alignItems="center" gap={1} mb={0.5}>
-                            <AssessmentIcon sx={{ color: OHEL_PURPLE, fontSize: "1.3rem" }} />
-                            <Typography variant="subtitle1" fontWeight="800" sx={{ color: OHEL_TEXT_DARK }}>
-                                Risultati dei Sondaggi
-                            </Typography>
-                        </Stack>
-                        <Typography variant="body2" sx={{ color: "#52796f", mb: 2, pl: 3.6, fontSize: "0.85rem", lineHeight: 1.3 }}>
-                            Consulta le preferenze espresse dalla comunità e i report riassuntivi delle consultazioni.
-                        </Typography>
-                        <Button
-                            variant="contained"
-                            fullWidth
-                            onClick={() => navigate("/surveys/results")}
-                            sx={{
-                                backgroundColor: OHEL_PURPLE,
-                                color: "#ffffff",
-                                borderRadius: "12px",
-                                textTransform: "none",
-                                fontWeight: "700",
-                                boxShadow: "0 4px 12px rgba(107, 91, 149, 0.15)",
-                                "&:hover": { backgroundColor: "#52467b" }
-                            }}
-                        >
-                            Vedi Risultati Sondaggi →
-                        </Button>
-                    </CardContent>
-                </Card>
 
-                {/* SEZIONE 3: SONDAGGI E CONSULTAZIONI ATTIVE */}
-                <Typography variant="caption" fontWeight="700" sx={{ color: "#406353", textTransform: "uppercase", letterSpacing: "0.05em", pl: 0.5, mt: 1.5 }}>
-                    Sondaggi e Consultazioni Attive
-                </Typography>
-
-                <Stack gap={1.5} sx={{ mb: 4 }}>
-                    {surveys.length > 0 ? (
-                        surveys.map((survey) => (
-                            <Card
-                                key={survey.idSondaggio}
-                                sx={{
-                                    borderRadius: "20px",
-                                    border: "1px solid #e1ebe5",
-                                    borderLeft: `5px solid ${survey.voted ? OHEL_OCHRE : OHEL_GREEN}`,
-                                    boxShadow: "0 4px 12px rgba(46, 91, 67, 0.02)"
-                                }}
-                            >
-                                <CardContent sx={{ p: 2.5 }}>
-                                    <Typography variant="subtitle1" fontWeight="800" sx={{ color: OHEL_TEXT_DARK, mb: 0.5 }}>
-                                        {survey.title}
-                                    </Typography>
-
-                                    {survey.description && (
-                                        <Typography variant="body2" sx={{ color: "#52796f", mb: 1.5, display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" }}>
-                                            {survey.description}
-                                        </Typography>
+                    {/* 1. TESSERA PROFILO HERO (BENTO TILE 1) */}
+                    <Card sx={{
+                        gridColumn: { xs: "span 2", sm: "span 12" },
+                        borderRadius: "18px",
+                        border: "1px solid #e1ebe5",
+                        background: "linear-gradient(135deg, #ffffff 0%, #f4f8f5 100%)",
+                        boxShadow: "0 4px 14px rgba(46, 91, 67, 0.04)",
+                    }}>
+                        <CardContent sx={{ p: 2, "&:last-child": { pb: 2 } }}>
+                            <Box display="flex" alignItems="center" justifyContent="space-between" flexWrap="wrap" gap={1.2}>
+                                <Box display="flex" alignItems="center" gap={1.5}>
+                                    {user.picture ? (
+                                        <Avatar
+                                            src={user.picture.replace(/\s+/g, '')}
+                                            alt="Profilo"
+                                            sx={{ width: 46, height: 46, border: `2px solid ${OHEL_GREEN}`, boxShadow: "0 2px 8px rgba(46, 91, 67, 0.1)" }}
+                                        />
+                                    ) : (
+                                        <Avatar sx={{ width: 46, height: 46, backgroundColor: OHEL_GREEN, fontWeight: "750", fontSize: "1rem", boxShadow: "0 2px 8px rgba(46, 91, 67, 0.1)" }}>
+                                            {user.nome.charAt(0)}
+                                        </Avatar>
                                     )}
+                                    <Box>
+                                        <Typography variant="subtitle1" fontWeight="800" sx={{ color: OHEL_TEXT_DARK, lineHeight: 1.15, fontSize: "1rem" }}>
+                                            Ciao, {user.nome}!
+                                        </Typography>
+                                        <Typography variant="caption" sx={{ color: OHEL_SAGE, fontWeight: 600, fontSize: "0.75rem" }}>
+                                            Associazione Ohel
+                                        </Typography>
+                                    </Box>
+                                </Box>
 
-                                    <Typography variant="caption" display="block" sx={{ color: survey.voted ? OHEL_OCHRE : OHEL_GREEN, fontWeight: 700, mb: 2 }}>
-                                        📅 {getDatesCountLabel(survey.dates)} {survey.voted && " • (Già Compilato)"}
+                                <Stack direction="row" alignItems="center" gap={1}>
+                                    <Chip
+                                        icon={user.isAdmin ? <AdminPanelSettingsIcon style={{ fontSize: 14 }} /> : <PersonIcon style={{ fontSize: 14 }} />}
+                                        label={user.isAdmin ? "Admin" : "Socio"}
+                                        size="small"
+                                        sx={{
+                                            height: 24,
+                                            backgroundColor: user.isAdmin ? "#fff7ed" : "#f0fdf4",
+                                            color: user.isAdmin ? "#c2410c" : "#166534",
+                                            borderColor: user.isAdmin ? "#ffedd5" : "#dcfce7",
+                                            borderStyle: "solid",
+                                            borderWidth: "1px",
+                                            fontWeight: 700,
+                                            fontSize: "0.72rem",
+                                            px: 0.5,
+                                        }}
+                                    />
+                                    {pendingSurveysCount > 0 ? (
+                                        <Chip
+                                            icon={<HowToVoteIcon style={{ fontSize: 13, color: "#15803d" }} />}
+                                            label={`${pendingSurveysCount} in sospeso`}
+                                            size="small"
+                                            sx={{ height: 24, backgroundColor: "#dcfce7", color: "#15803d", fontWeight: 700, fontSize: "0.72rem" }}
+                                        />
+                                    ) : (
+                                        <Chip
+                                            icon={<CheckCircleOutlineIcon style={{ fontSize: 13, color: "#475569" }} />}
+                                            label="Tutto ok"
+                                            size="small"
+                                            variant="outlined"
+                                            sx={{ height: 24, borderColor: "#cbd5e1", color: "#475569", fontWeight: 700, fontSize: "0.72rem" }}
+                                        />
+                                    )}
+                                </Stack>
+                            </Box>
+                        </CardContent>
+                    </Card>
+
+                    {/* 2. TESSERA CONSULTAZIONI ATTIVE (BENTO TILE 2 - PRIORITÀ MAX) */}
+                    <Box sx={{ gridColumn: { xs: "span 2", sm: "span 12" } }}>
+                        <Typography variant="caption" fontWeight="800" sx={{ color: OHEL_GREEN, textTransform: "uppercase", letterSpacing: "0.06em", pl: 0.5, mb: 0.8, display: "block", fontSize: "0.72rem" }}>
+                            ⚡ Consultazioni Attive
+                        </Typography>
+
+                        {surveys.length > 0 ? (
+                            surveys.map((survey) => (
+                                <Card
+                                    key={survey.idSondaggio}
+                                    sx={{
+                                        borderRadius: "18px",
+                                        border: "1px solid #e1ebe5",
+                                        borderLeft: `6px solid ${survey.voted ? OHEL_OCHRE : OHEL_GREEN}`,
+                                        backgroundColor: "#ffffff",
+                                        boxShadow: "0 3px 12px rgba(46, 91, 67, 0.04)",
+                                    }}
+                                >
+                                    <CardContent sx={{ p: 2.2, "&:last-child": { pb: 2.2 } }}>
+                                        <Box display="flex" alignItems="center" justifyContent="space-between" gap={1.5} flexWrap="wrap">
+                                            <Box flex={1} minWidth="200px">
+                                                <Box display="flex" alignItems="center" gap={1} mb={0.4}>
+                                                    <Typography variant="subtitle1" fontWeight="800" sx={{ color: OHEL_TEXT_DARK, lineHeight: 1.2, fontSize: "0.95rem" }}>
+                                                        {survey.title}
+                                                    </Typography>
+                                                    <Chip
+                                                        label={survey.voted ? "Già Compilato" : "Da Compilare"}
+                                                        size="small"
+                                                        sx={{
+                                                            height: 20,
+                                                            backgroundColor: survey.voted ? "#fef3c7" : "#dcfce7",
+                                                            color: survey.voted ? "#92400e" : "#166534",
+                                                            fontWeight: 700,
+                                                            fontSize: "0.68rem",
+                                                            borderRadius: "6px",
+                                                        }}
+                                                    />
+                                                </Box>
+                                                {survey.description && (
+                                                    <Typography variant="body2" sx={{ color: "#52796f", fontSize: "0.82rem", lineHeight: 1.35, display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" }}>
+                                                        {survey.description}
+                                                    </Typography>
+                                                )}
+                                            </Box>
+
+                                            <Box display="flex" alignItems="center" gap={1.2}>
+                                                <Chip
+                                                    icon={<CalendarMonthIcon style={{ fontSize: 13, color: survey.voted ? OHEL_OCHRE : OHEL_GREEN }} />}
+                                                    label={getDatesCountLabel(survey.dates)}
+                                                    variant="outlined"
+                                                    size="small"
+                                                    sx={{
+                                                        height: 24,
+                                                        borderColor: survey.voted ? "#fde68a" : "#bbf7d0",
+                                                        backgroundColor: survey.voted ? "#fffbeb" : "#f0fdf4",
+                                                        color: survey.voted ? "#b45309" : "#15803d",
+                                                        fontWeight: 600,
+                                                        fontSize: "0.72rem"
+                                                    }}
+                                                />
+
+                                                <Button
+                                                    variant={survey.voted ? "outlined" : "contained"}
+                                                    size="small"
+                                                    onClick={() => navigate(`/surveys/${survey.idSondaggio.replace("SURV_", "")}`)}
+                                                    sx={{
+                                                        height: 34,
+                                                        px: 2.2,
+                                                        backgroundColor: survey.voted ? "transparent" : OHEL_GREEN,
+                                                        borderColor: survey.voted ? OHEL_OCHRE : "transparent",
+                                                        color: survey.voted ? OHEL_OCHRE : "#ffffff",
+                                                        borderRadius: "10px",
+                                                        textTransform: "none",
+                                                        fontWeight: "700",
+                                                        fontSize: "0.78rem",
+                                                        boxShadow: survey.voted ? "none" : "0 2px 8px rgba(46, 91, 67, 0.15)",
+                                                        "&:hover": {
+                                                            backgroundColor: survey.voted ? "#fffbeb" : "#1e382b",
+                                                        }
+                                                    }}
+                                                >
+                                                    {survey.voted ? "Modifica Risposte →" : "Compila Disponibilità →"}
+                                                </Button>
+                                            </Box>
+                                        </Box>
+                                    </CardContent>
+                                </Card>
+                            ))
+                        ) : (
+                            <Card sx={{ borderRadius: "18px", border: "1px dashed #cbd5e1", backgroundColor: "#ffffff" }}>
+                                <CardContent sx={{ p: 2, textAlign: "center", display: "flex", alignItems: "center", justifyContent: "center", gap: 1 }}>
+                                    <CheckCircleOutlineIcon sx={{ fontSize: 20, color: OHEL_SAGE }} />
+                                    <Typography variant="body2" fontWeight="600" sx={{ color: "#64748b", fontSize: "0.82rem" }}>
+                                        Nessuna consultazione in sospeso. Tutto aggiornato!
                                     </Typography>
+                                </CardContent>
+                            </Card>
+                        )}
+                    </Box>
+
+                    {/* 3. SCORCIATOIE STRUMENTI (4 TESSERE BILANCIATE PER ADMIN) */}
+                    <Box sx={{ gridColumn: { xs: "span 2", sm: "span 12" } }}>
+                        <Typography variant="caption" fontWeight="800" sx={{ color: "#475569", textTransform: "uppercase", letterSpacing: "0.06em", pl: 0.5, mb: 0.8, display: "block", fontSize: "0.72rem" }}>
+                            📌 Strumenti Gestionali
+                        </Typography>
+
+                        <Box sx={{
+                            display: "grid",
+                            gridTemplateColumns: user.isAdmin ? { xs: "repeat(2, 1fr)", sm: "repeat(12, 1fr)" } : "1fr",
+                            gap: 1.8
+                        }}>
+
+                            {/* TESSERA 1: RISULTATI SONDAGGI (ACCESSIBILE A TUTTI) */}
+                            <Card sx={{
+                                gridColumn: user.isAdmin ? { xs: "span 1", sm: "span 3" } : "1 / -1",
+                                display: "flex",
+                                flexDirection: "column",
+                                minHeight: "140px",
+                                borderRadius: "18px",
+                                border: "1px solid #e1ebe5",
+                                borderTop: `5px solid ${OHEL_PURPLE}`,
+                                backgroundColor: "#ffffff",
+                                boxShadow: "0 3px 12px rgba(46, 91, 67, 0.04)",
+                                transition: "all 0.2s ease",
+                                "&:hover": { transform: "translateY(-2px)" }
+                            }}>
+                                <CardContent sx={{ p: 2, "&:last-child": { pb: 2 }, display: "flex", flexDirection: "column", height: "100%", justifyContent: "space-between" }}>
+                                    <Box mb={1.5}>
+                                        <Box display="flex" alignItems="center" gap={1} mb={0.6}>
+                                            <Box sx={{ backgroundColor: "#f3e8ff", p: 0.7, borderRadius: "8px", display: "flex", shrink: 0 }}>
+                                                <AssessmentIcon sx={{ color: OHEL_PURPLE, fontSize: "1.2rem" }} />
+                                            </Box>
+                                            <Typography variant="subtitle1" fontWeight="800" sx={{ color: OHEL_TEXT_DARK, fontSize: "0.88rem", lineHeight: 1.15 }}>
+                                                Risultati Sondaggi
+                                            </Typography>
+                                        </Box>
+                                        <Typography variant="caption" sx={{ color: "#64748b", fontSize: "0.75rem", lineHeight: 1.3, display: "block" }}>
+                                            Preferenze e dati della comunità
+                                        </Typography>
+                                    </Box>
 
                                     <Button
                                         variant="contained"
+                                        size="small"
                                         fullWidth
-                                        onClick={() => navigate(`/surveys/${survey.idSondaggio.replace("SURV_", "")}`)}
+                                        onClick={() => navigate("/surveys/results")}
                                         sx={{
-                                            backgroundColor: survey.voted ? OHEL_OCHRE : OHEL_GREEN,
+                                            height: 34,
+                                            backgroundColor: OHEL_PURPLE,
                                             color: "#ffffff",
-                                            borderRadius: "12px",
+                                            borderRadius: "10px",
                                             textTransform: "none",
                                             fontWeight: "700",
-                                            "&:hover": { backgroundColor: survey.voted ? "#bd7f22" : OHEL_TEXT_DARK }
+                                            fontSize: "0.76rem",
+                                            boxShadow: "0 2px 8px rgba(107, 91, 149, 0.15)",
+                                            "&:hover": { backgroundColor: "#52467b" }
                                         }}
                                     >
-                                        {survey.voted ? "✏️ Visualizza le tue risposte →" : "Compila Disponibilità →"}
+                                        Vedi Risultati →
                                     </Button>
                                 </CardContent>
                             </Card>
-                        ))
-                    ) : (
-                        <Card sx={{ borderRadius: "20px", border: "1px solid #e1ebe5" }}>
-                            <CardContent sx={{ p: 3, textAlign: "center" }}>
-                                <Typography variant="body2" sx={{ color: "#52796f", fontStyle: "italic" }}>
-                                    Nessuna consultazione attiva al momento.
-                                </Typography>
-                            </CardContent>
-                        </Card>
-                    )}
-                </Stack>
 
+                            {/* TESSERA 2: NUOVO SONDAGGIO (ADMIN) */}
+                            {user.isAdmin && (
+                                <Card sx={{
+                                    gridColumn: { xs: "span 1", sm: "span 3" },
+                                    display: "flex",
+                                    flexDirection: "column",
+                                    minHeight: "140px",
+                                    borderRadius: "18px",
+                                    border: "1px solid #e1ebe5",
+                                    borderTop: `5px solid ${OHEL_ORANGE}`,
+                                    backgroundColor: "#ffffff",
+                                    boxShadow: "0 3px 12px rgba(46, 91, 67, 0.04)",
+                                    transition: "all 0.2s ease",
+                                    "&:hover": { transform: "translateY(-2px)" }
+                                }}>
+                                    <CardContent sx={{ p: 2, "&:last-child": { pb: 2 }, display: "flex", flexDirection: "column", height: "100%", justifyContent: "space-between" }}>
+                                        <Box mb={1.5}>
+                                            <Box display="flex" alignItems="center" gap={1} mb={0.6}>
+                                                <Box sx={{ backgroundColor: "#ffedd5", p: 0.7, borderRadius: "8px", display: "flex", shrink: 0 }}>
+                                                    <AddIcon sx={{ color: OHEL_ORANGE, fontSize: "1.2rem" }} />
+                                                </Box>
+                                                <Typography variant="subtitle1" fontWeight="800" sx={{ color: OHEL_TEXT_DARK, fontSize: "0.88rem", lineHeight: 1.15 }}>
+                                                    Nuovo Sondaggio
+                                                </Typography>
+                                            </Box>
+                                            <Typography variant="caption" sx={{ color: "#64748b", fontSize: "0.75rem", lineHeight: 1.3, display: "block" }}>
+                                                Crea e pubblica nuove date
+                                            </Typography>
+                                        </Box>
+
+                                        <Button
+                                            variant="contained"
+                                            size="small"
+                                            fullWidth
+                                            onClick={() => navigate("/surveys/edit")}
+                                            sx={{
+                                                height: 34,
+                                                backgroundColor: OHEL_ORANGE,
+                                                color: "#ffffff",
+                                                borderRadius: "10px",
+                                                textTransform: "none",
+                                                fontWeight: "700",
+                                                fontSize: "0.76rem",
+                                                boxShadow: "0 2px 8px rgba(230, 95, 43, 0.15)",
+                                                "&:hover": { backgroundColor: "#c2410c" }
+                                            }}
+                                        >
+                                            Crea Ora →
+                                        </Button>
+                                    </CardContent>
+                                </Card>
+                            )}
+
+                            {/* TESSERA 3: GESTIONE SONDAGGI (SOLO ADMIN - PUNTA A /surveys/manage) */}
+                            {user.isAdmin && (
+                                <Card sx={{
+                                    gridColumn: { xs: "span 1", sm: "span 3" },
+                                    display: "flex",
+                                    flexDirection: "column",
+                                    minHeight: "140px",
+                                    borderRadius: "18px",
+                                    border: "1px solid #e1ebe5",
+                                    borderTop: `5px solid ${OHEL_TEAL}`,
+                                    backgroundColor: "#ffffff",
+                                    boxShadow: "0 3px 12px rgba(46, 91, 67, 0.04)",
+                                    transition: "all 0.2s ease",
+                                    "&:hover": { transform: "translateY(-2px)" }
+                                }}>
+                                    <CardContent sx={{ p: 2, "&:last-child": { pb: 2 }, display: "flex", flexDirection: "column", height: "100%", justifyContent: "space-between" }}>
+                                        <Box mb={1.5}>
+                                            <Box display="flex" alignItems="center" gap={1} mb={0.6}>
+                                                <Box sx={{ backgroundColor: "#ccfbf1", p: 0.7, borderRadius: "8px", display: "flex", shrink: 0 }}>
+                                                    <TuneIcon sx={{ color: OHEL_TEAL, fontSize: "1.2rem" }} />
+                                                </Box>
+                                                <Typography variant="subtitle1" fontWeight="800" sx={{ color: OHEL_TEXT_DARK, fontSize: "0.88rem", lineHeight: 1.15 }}>
+                                                    Gestione Sondaggi
+                                                </Typography>
+                                            </Box>
+                                            <Typography variant="caption" sx={{ color: "#64748b", fontSize: "0.75rem", lineHeight: 1.3, display: "block" }}>
+                                                Modifica o elimina sondaggi
+                                            </Typography>
+                                        </Box>
+
+                                        <Button
+                                            variant="contained"
+                                            size="small"
+                                            fullWidth
+                                            onClick={() => navigate("/surveys/manage")}
+                                            sx={{
+                                                height: 34,
+                                                backgroundColor: OHEL_TEAL,
+                                                color: "#ffffff",
+                                                borderRadius: "10px",
+                                                textTransform: "none",
+                                                fontWeight: "700",
+                                                fontSize: "0.76rem",
+                                                boxShadow: "0 2px 8px rgba(15, 118, 110, 0.15)",
+                                                "&:hover": { backgroundColor: "#115e59" }
+                                            }}
+                                        >
+                                            Gestisci →
+                                        </Button>
+                                    </CardContent>
+                                </Card>
+                            )}
+
+                            {/* TESSERA 4: REGISTRO PRESENZE (ADMIN) */}
+                            {user.isAdmin && (
+                                <Card sx={{
+                                    gridColumn: { xs: "span 1", sm: "span 3" },
+                                    display: "flex",
+                                    flexDirection: "column",
+                                    minHeight: "140px",
+                                    borderRadius: "18px",
+                                    border: "1px solid #e1ebe5",
+                                    borderTop: `5px solid ${OHEL_BLUE}`,
+                                    backgroundColor: "#ffffff",
+                                    boxShadow: "0 3px 12px rgba(46, 91, 67, 0.04)",
+                                    transition: "all 0.2s ease",
+                                    "&:hover": { transform: "translateY(-2px)" }
+                                }}>
+                                    <CardContent sx={{ p: 2, "&:last-child": { pb: 2 }, display: "flex", flexDirection: "column", height: "100%", justifyContent: "space-between" }}>
+                                        <Box mb={1.5}>
+                                            <Box display="flex" alignItems="center" gap={1} mb={0.6}>
+                                                <Box sx={{ backgroundColor: "#e0f2fe", p: 0.7, borderRadius: "8px", display: "flex", shrink: 0 }}>
+                                                    <BarChartIcon sx={{ color: OHEL_BLUE, fontSize: "1.2rem" }} />
+                                                </Box>
+                                                <Typography variant="subtitle1" fontWeight="800" sx={{ color: OHEL_TEXT_DARK, fontSize: "0.88rem", lineHeight: 1.15 }}>
+                                                    Registro Presenze
+                                                </Typography>
+                                            </Box>
+                                            <Typography variant="caption" sx={{ color: "#64748b", fontSize: "0.75rem", lineHeight: 1.3, display: "block" }}>
+                                                Statistiche & profili cibari
+                                            </Typography>
+                                        </Box>
+
+                                        <Button
+                                            variant="contained"
+                                            size="small"
+                                            fullWidth
+                                            onClick={() => navigate("/disponibilita")}
+                                            sx={{
+                                                height: 34,
+                                                backgroundColor: OHEL_BLUE,
+                                                color: "#ffffff",
+                                                borderRadius: "10px",
+                                                textTransform: "none",
+                                                fontWeight: "700",
+                                                fontSize: "0.76rem",
+                                                boxShadow: "0 2px 8px rgba(42, 111, 151, 0.15)",
+                                                "&:hover": { backgroundColor: "#1d4ed8" }
+                                            }}
+                                        >
+                                            Consulta →
+                                        </Button>
+                                    </CardContent>
+                                </Card>
+                            )}
+
+                        </Box>
+                    </Box>
+
+                </Box>
+
+                <Footer />
             </Container>
-
-            <Footer />
         </Box>
     );
 }

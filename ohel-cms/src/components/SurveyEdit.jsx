@@ -3,6 +3,8 @@ import { useNavigate } from "react-router-dom";
 import CONFIG from "../config/config"; // Config importata correttamente
 import HeaderCompact from "./HeaderCompact";
 import Footer from "../components/Footer";
+import { clearAllCache, clearCachePattern } from "../utils/cacheManager";
+import MessageDialog from "./MessageDialog";
 
 // Importazioni Material-UI
 import {
@@ -29,7 +31,12 @@ const OHEL_TEXT_DARK = "#1e382b";
 
 function SurveyEdit() {
     const navigate = useNavigate();
-    const [submitting, setSubmitting] = useState(false); // Stato di caricamento per l'invio
+    const [submitting, setSubmitting] = useState(false);
+    const [dialog, setDialog] = useState({ open: false, title: "", message: "", severity: "info", callback: null });
+
+    const showDialog = (title, message, severity = "info", callback = null) => {
+        setDialog({ open: true, title, message, severity, callback });
+    };
 
     // Estrazione dell'URL del backend come nell'esempio della Home
     const { URL_APPS_SCRIPT } = CONFIG;
@@ -58,8 +65,7 @@ function SurveyEdit() {
     ]);
 
     const handleLogout = () => {
-        localStorage.removeItem("authToken");
-        localStorage.removeItem("userProfile");
+        clearAllCache();
         navigate("/", { replace: true });
     };
 
@@ -113,8 +119,7 @@ function SurveyEdit() {
 
         const idToken = localStorage.getItem("authToken");
         if (!idToken) {
-            alert("Sessione non valida o scaduta. Riapri l'applicazione.");
-            handleLogout();
+            showDialog("Sessione Scaduta", "Sessione non valida o scaduta. Riapri l'applicazione.", "warning", handleLogout);
             return;
         }
 
@@ -148,14 +153,14 @@ function SurveyEdit() {
             const data = await response.json();
 
             if (data.status === "success") {
-                alert("🚀 Sondaggio pubblicato su Google Sheets con successo!");
-                navigate("/dashboard");
+                clearCachePattern("surveys_active");
+                showDialog("Sondaggio Pubblicato", "🚀 Nuovo sondaggio pubblicato con successo!", "success", () => navigate("/dashboard"));
             } else {
-                alert("Impossibile salvare il sondaggio: " + data.message);
+                showDialog("Errore Salvataggio", "Impossibile salvare il sondaggio: " + data.message, "error");
             }
         } catch (err) {
             console.error("[ERRORE PUBBLICAZIONE SONDAGGIO]:", err);
-            alert("Errore di rete. Verifica la connessione o le configurazioni CORS del backend.");
+            showDialog("Errore di Rete", "Errore di rete. Verifica la connessione o le configurazioni CORS del backend.", "error");
         } finally {
             setSubmitting(false);
         }
@@ -429,6 +434,17 @@ function SurveyEdit() {
             </Container>
 
             <Footer />
+
+            <MessageDialog
+                open={dialog.open}
+                onClose={() => {
+                    setDialog(prev => ({ ...prev, open: false }));
+                    if (dialog.callback) dialog.callback();
+                }}
+                title={dialog.title}
+                message={dialog.message}
+                severity={dialog.severity}
+            />
         </Box>
     );
 }

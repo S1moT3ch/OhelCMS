@@ -4,12 +4,19 @@ import { GoogleLogin } from "@react-oauth/google";
 import CONFIG from "../config/config";
 import HeaderCompact from "./HeaderCompact";
 import Footer from "./Footer";
+import LoadingScreen from "./LoadingScreen";
+import MessageDialog from "./MessageDialog";
 
 function Home() {
     const navigate = useNavigate();
     const [loading, setLoading] = useState(false);
     const [showRegisterForm, setShowRegisterForm] = useState(false);
     const [isLoggedIn, setIsLoggedIn] = useState(false);
+    const [dialog, setDialog] = useState({ open: false, title: "", message: "", severity: "info" });
+
+    const showDialog = (title, message, severity = "info") => {
+        setDialog({ open: true, title, message, severity });
+    };
 
     const [formData, setFormData] = useState({
         idGoogle: "",
@@ -46,7 +53,7 @@ function Home() {
                 const errorText = await response.text();
                 console.error(`[ERRORE DI RETE BROWSER] Stato: ${response.status} - ${response.statusText}`);
                 console.error("[DETTAGLIO ERRORE SERVER]:", errorText);
-                alert(`Errore del server (${response.status}). Controlla la console degli sviluppatori.`);
+                showDialog("Errore Server", `Errore del server (${response.status}). Riprova più tardi.`, "error");
                 return;
             }
 
@@ -68,11 +75,11 @@ function Home() {
                 }
             } else {
                 console.warn("[LOG APPLICATIVO BACKEND]:", data.message);
-                alert("Errore durante l'autenticazione: " + data.message);
+                showDialog("Autenticazione Fallita", data.message || "Impossibile accedere.", "error");
             }
         } catch (err) {
             console.error("[CRASH COMPLETO FETCH/CORS]:", err);
-            alert("Impossibile connettersi al server del backend. Verifica blocchi CORS o URL errati.");
+            showDialog("Errore Connessione", "Impossibile connettersi al server del backend.", "error");
         } finally {
             setLoading(false);
         }
@@ -80,7 +87,7 @@ function Home() {
 
     const handleLoginError = () => {
         console.error("Accesso con Google fallito.");
-        alert("Si è verificato un errore durante il login. Controlla la connessione.");
+        showDialog("Accesso Fallito", "Si è verificato un errore durante il login con Google.", "warning");
     };
 
     const handleRegisterSubmit = async (e) => {
@@ -105,14 +112,18 @@ function Home() {
                 setShowRegisterForm(false);
                 navigate("/dashboard");
             } else {
-                alert("Errore: " + data.message);
+                showDialog("Registrazione Non Riuscita", data.message, "error");
             }
         } catch (err) {
-            alert("Errore di rete durante la registrazione.");
+            showDialog("Errore di Rete", "Errore di rete durante la registrazione.", "error");
         } finally {
             setLoading(false);
         }
     };
+
+    if (loading) {
+        return <LoadingScreen message="Autenticazione in corso..." color="#2e5b43" fullScreen={true} />;
+    }
 
     return (
         <div style={{
@@ -137,8 +148,6 @@ function Home() {
                 ) : (
                     <HeaderCompact subtitle="Completamento iscrizione" />
                 )}
-
-                {loading && <div style={styles.loadingSpinner}>Elaborazione in corso...</div>}
 
                 {!showRegisterForm ? (
                     <main style={styles.menu}>
@@ -187,7 +196,7 @@ function Home() {
                                 type="text"
                                 required
                                 value={formData.nome}
-                                onChange={(e) => setFormData({...formData, nome: e.target.value})}
+                                onChange={(e) => setFormData({ ...formData, nome: e.target.value })}
                                 style={styles.input}
                             />
                         </div>
@@ -198,7 +207,7 @@ function Home() {
                                 type="text"
                                 required
                                 value={formData.cognome}
-                                onChange={(e) => setFormData({...formData, cognome: e.target.value})}
+                                onChange={(e) => setFormData({ ...formData, cognome: e.target.value })}
                                 style={styles.input}
                             />
                         </div>
@@ -219,6 +228,14 @@ function Home() {
                     </form>
                 )}
             </div>
+
+            <MessageDialog
+                open={dialog.open}
+                onClose={() => setDialog(prev => ({ ...prev, open: false }))}
+                title={dialog.title}
+                message={dialog.message}
+                severity={dialog.severity}
+            />
 
             <Footer />
         </div>

@@ -3,6 +3,9 @@ import { useNavigate } from "react-router-dom";
 import CONFIG from "../config/config";
 import HeaderCompact from "./HeaderCompact";
 import Footer from "../components/Footer";
+import { getCache, setCache, clearAllCache } from "../utils/cacheManager";
+import LoadingScreen from "./LoadingScreen";
+import MessageDialog from "./MessageDialog";
 
 // Importazioni Material-UI
 import {
@@ -12,7 +15,6 @@ import {
     CardContent,
     Typography,
     Button,
-    CircularProgress,
     Stack,
     Chip
 } from "@mui/material";
@@ -27,10 +29,16 @@ const OHEL_TEXT_DARK = "#1e382b";
 
 function SurveyResultsList() {
     const navigate = useNavigate();
+
     const [surveys, setSurveys] = useState([]);
     const [loading, setLoading] = useState(true);
+    const [dialog, setDialog] = useState({ open: false, title: "", message: "", severity: "info" });
 
     const { URL_APPS_SCRIPT } = CONFIG;
+
+    const showDialog = (title, message, severity = "info") => {
+        setDialog({ open: true, title, message, severity });
+    };
 
     useEffect(() => {
         const caricaSondaggi = async () => {
@@ -43,6 +51,13 @@ function SurveyResultsList() {
             }
 
             const currentUser = JSON.parse(storedUserProfile);
+
+            // Caricamento immediato da cache
+            const cachedSurveys = getCache(`surveys_active_${currentUser.email}`);
+            if (cachedSurveys && cachedSurveys.data) {
+                setSurveys(cachedSurveys.data);
+                setLoading(false);
+            }
 
             try {
                 // Recuperiamo i sondaggi attivi dal backend Apps Script
@@ -57,12 +72,13 @@ function SurveyResultsList() {
 
                 if (data.status === "success") {
                     setSurveys(data.surveys || []);
+                    setCache(`surveys_active_${currentUser.email}`, data.surveys || [], 5 * 60 * 1000);
                 } else {
-                    alert("Errore nel recupero dati: " + data.message);
+                    showDialog("Errore Recupero Dati", data.message, "error");
                 }
             } catch (err) {
                 console.error("Errore nel caricamento dei sondaggi:", err);
-                alert("Impossibile connettersi al server del backend.");
+                showDialog("Errore Connessione", "Impossibile connettersi al server del backend.", "error");
             } finally {
                 setLoading(false);
             }
@@ -73,8 +89,7 @@ function SurveyResultsList() {
     }, [URL_APPS_SCRIPT]);
 
     const handleLogout = () => {
-        localStorage.removeItem("authToken");
-        localStorage.removeItem("userProfile");
+        clearAllCache();
         navigate("/", { replace: true });
     };
 
@@ -83,11 +98,7 @@ function SurveyResultsList() {
     };
 
     if (loading) {
-        return (
-            <Box display="flex" justifyContent="center" alignItems="center" minHeight="100vh" backgroundColor={OHEL_LIGHT_GREEN}>
-                <CircularProgress size={50} sx={{ color: OHEL_PURPLE }} />
-            </Box>
-        );
+        return <LoadingScreen message="Caricamento risultati..." color={OHEL_PURPLE} />;
     }
 
     return (
@@ -202,6 +213,14 @@ function SurveyResultsList() {
             </Container>
 
             <Footer />
+
+            <MessageDialog
+                open={dialog.open}
+                onClose={() => setDialog(prev => ({ ...prev, open: false }))}
+                title={dialog.title}
+                message={dialog.message}
+                severity={dialog.severity}
+            />
         </Box>
     );
 }
