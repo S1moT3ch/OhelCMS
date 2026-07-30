@@ -178,21 +178,21 @@ function Dashboard() {
                 display: "flex",
                 flexDirection: "column",
                 justifyContent: "space-between",
-                py: 2,
+                py: 2.5,
                 px: { xs: 2, sm: 3 },
                 boxSizing: "border-box"
             }}>
 
-                {/* GRIGLIA BENTO BOX CON SCHEDE PIÙ ALTE ED ELEGANTE ALTEZZA */}
+                {/* GRIGLIA BENTO BOX CON SPAZIATURA MAGGIORE */}
                 <Box sx={{
                     display: "grid",
                     gridTemplateColumns: { xs: "repeat(2, 1fr)", sm: "repeat(12, 1fr)" },
-                    gap: 1.8,
+                    gap: 2.5,
                     flex: 1,
                     alignContent: "start"
                 }}>
 
-                    {/* 1. TESSERA PROFILO HERO (BENTO TILE 1) */}
+                    {/* 1. TESSERA PROFILO HERO */}
                     <Card sx={{
                         gridColumn: { xs: "span 2", sm: "span 12" },
                         borderRadius: "18px",
@@ -200,7 +200,7 @@ function Dashboard() {
                         background: "linear-gradient(135deg, #ffffff 0%, #f4f8f5 100%)",
                         boxShadow: "0 4px 14px rgba(46, 91, 67, 0.04)",
                     }}>
-                        <CardContent sx={{ p: 2, "&:last-child": { pb: 2 } }}>
+                        <CardContent sx={{ p: 2.2, "&:last-child": { pb: 2.2 } }}>
                             <Box display="flex" alignItems="center" justifyContent="space-between" flexWrap="wrap" gap={1.2}>
                                 <Box display="flex" alignItems="center" gap={1.5}>
                                     {user.picture ? (
@@ -217,9 +217,6 @@ function Dashboard() {
                                     <Box>
                                         <Typography variant="subtitle1" fontWeight="800" sx={{ color: OHEL_TEXT_DARK, lineHeight: 1.15, fontSize: "1rem" }}>
                                             Ciao, {user.nome}!
-                                        </Typography>
-                                        <Typography variant="caption" sx={{ color: OHEL_SAGE, fontWeight: 600, fontSize: "0.75rem" }}>
-                                            Associazione Ohel
                                         </Typography>
                                     </Box>
                                 </Box>
@@ -262,99 +259,107 @@ function Dashboard() {
                         </CardContent>
                     </Card>
 
-                    {/* 2. TESSERA CONSULTAZIONI ATTIVE (BENTO TILE 2 - PRIORITÀ MAX) */}
+                    {/* 2. TESSERA CONSULTAZIONI ATTIVE */}
                     <Box sx={{ gridColumn: { xs: "span 2", sm: "span 12" } }}>
-                        <Typography variant="caption" fontWeight="800" sx={{ color: OHEL_GREEN, textTransform: "uppercase", letterSpacing: "0.06em", pl: 0.5, mb: 0.8, display: "block", fontSize: "0.72rem" }}>
+                        <Typography variant="caption" fontWeight="800" sx={{ color: OHEL_GREEN, textTransform: "uppercase", letterSpacing: "0.06em", pl: 0.5, mb: 1.5, display: "block", fontSize: "0.75rem" }}>
                             ⚡ Consultazioni Attive
                         </Typography>
 
                         {surveys.length > 0 ? (
-                            surveys.map((survey) => (
-                                <Card
-                                    key={survey.idSondaggio}
-                                    sx={{
-                                        borderRadius: "18px",
-                                        border: "1px solid #e1ebe5",
-                                        borderLeft: `6px solid ${survey.voted ? OHEL_OCHRE : OHEL_GREEN}`,
-                                        backgroundColor: "#ffffff",
-                                        boxShadow: "0 3px 12px rgba(46, 91, 67, 0.04)",
-                                    }}
-                                >
-                                    <CardContent sx={{ p: 2.2, "&:last-child": { pb: 2.2 } }}>
-                                        <Box display="flex" alignItems="center" justifyContent="space-between" gap={1.5} flexWrap="wrap">
-                                            <Box flex={1} minWidth="200px">
-                                                <Box display="flex" alignItems="center" gap={1} mb={0.4}>
-                                                    <Typography variant="subtitle1" fontWeight="800" sx={{ color: OHEL_TEXT_DARK, lineHeight: 1.2, fontSize: "0.95rem" }}>
-                                                        {survey.title}
-                                                    </Typography>
+                            /* ✨ STACK CON GAP MAGGIORE (2.5 = 20px) PER DARE PIÙ SPAZIO TRA LE CARD */
+                            <Stack gap={2.5}>
+                                {surveys.map((survey) => (
+                                    <Card
+                                        key={survey.idSondaggio}
+                                        sx={{
+                                            borderRadius: "18px",
+                                            border: "1px solid #e1ebe5",
+                                            borderLeft: `6px solid ${survey.voted ? OHEL_OCHRE : OHEL_GREEN}`,
+                                            backgroundColor: "#ffffff",
+                                            boxShadow: "0 4px 14px rgba(46, 91, 67, 0.04)",
+                                            transition: "transform 0.2s ease, box-shadow 0.2s ease",
+                                            "&:hover": {
+                                                transform: "translateY(-2px)",
+                                                boxShadow: "0 6px 18px rgba(46, 91, 67, 0.08)"
+                                            }
+                                        }}
+                                    >
+                                        <CardContent sx={{ p: 2.5, "&:last-child": { pb: 2.5 } }}>
+                                            <Box display="flex" alignItems="center" justifyContent="space-between" gap={2} flexWrap="wrap">
+                                                <Box flex={1} minWidth="200px">
+                                                    <Box display="flex" alignItems="center" gap={1} mb={0.6}>
+                                                        <Typography variant="subtitle1" fontWeight="800" sx={{ color: OHEL_TEXT_DARK, lineHeight: 1.2, fontSize: "0.98rem" }}>
+                                                            {survey.title}
+                                                        </Typography>
+                                                        <Chip
+                                                            label={survey.voted ? "Già Compilato" : "Da Compilare"}
+                                                            size="small"
+                                                            sx={{
+                                                                height: 22,
+                                                                backgroundColor: survey.voted ? "#fef3c7" : "#dcfce7",
+                                                                color: survey.voted ? "#92400e" : "#166534",
+                                                                fontWeight: 700,
+                                                                fontSize: "0.70rem",
+                                                                borderRadius: "6px",
+                                                            }}
+                                                        />
+                                                    </Box>
+                                                    {survey.description && (
+                                                        <Typography variant="body2" sx={{ color: "#52796f", fontSize: "0.84rem", lineHeight: 1.4, display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" }}>
+                                                            {survey.description}
+                                                        </Typography>
+                                                    )}
+                                                </Box>
+
+                                                <Box display="flex" alignItems="center" gap={1.5}>
                                                     <Chip
-                                                        label={survey.voted ? "Già Compilato" : "Da Compilare"}
+                                                        icon={<CalendarMonthIcon style={{ fontSize: 14, color: survey.voted ? OHEL_OCHRE : OHEL_GREEN }} />}
+                                                        label={getDatesCountLabel(survey.dates)}
+                                                        variant="outlined"
                                                         size="small"
                                                         sx={{
-                                                            height: 20,
-                                                            backgroundColor: survey.voted ? "#fef3c7" : "#dcfce7",
-                                                            color: survey.voted ? "#92400e" : "#166534",
-                                                            fontWeight: 700,
-                                                            fontSize: "0.68rem",
-                                                            borderRadius: "6px",
+                                                            height: 26,
+                                                            borderColor: survey.voted ? "#fde68a" : "#bbf7d0",
+                                                            backgroundColor: survey.voted ? "#fffbeb" : "#f0fdf4",
+                                                            color: survey.voted ? "#b45309" : "#15803d",
+                                                            fontWeight: 600,
+                                                            fontSize: "0.74rem"
                                                         }}
                                                     />
+
+                                                    <Button
+                                                        variant={survey.voted ? "outlined" : "contained"}
+                                                        size="small"
+                                                        onClick={() => navigate(`/surveys/${survey.idSondaggio.replace("SURV_", "")}`)}
+                                                        sx={{
+                                                            height: 36,
+                                                            px: 2.2,
+                                                            backgroundColor: survey.voted ? "transparent" : OHEL_GREEN,
+                                                            borderColor: survey.voted ? OHEL_OCHRE : "transparent",
+                                                            color: survey.voted ? OHEL_OCHRE : "#ffffff",
+                                                            borderRadius: "10px",
+                                                            textTransform: "none",
+                                                            fontWeight: "700",
+                                                            fontSize: "0.80rem",
+                                                            boxShadow: survey.voted ? "none" : "0 2px 8px rgba(46, 91, 67, 0.15)",
+                                                            "&:hover": {
+                                                                backgroundColor: survey.voted ? "#fffbeb" : "#1e382b",
+                                                            }
+                                                        }}
+                                                    >
+                                                        {survey.voted ? "Modifica Risposte →" : "Compila Disponibilità →"}
+                                                    </Button>
                                                 </Box>
-                                                {survey.description && (
-                                                    <Typography variant="body2" sx={{ color: "#52796f", fontSize: "0.82rem", lineHeight: 1.35, display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" }}>
-                                                        {survey.description}
-                                                    </Typography>
-                                                )}
                                             </Box>
-
-                                            <Box display="flex" alignItems="center" gap={1.2}>
-                                                <Chip
-                                                    icon={<CalendarMonthIcon style={{ fontSize: 13, color: survey.voted ? OHEL_OCHRE : OHEL_GREEN }} />}
-                                                    label={getDatesCountLabel(survey.dates)}
-                                                    variant="outlined"
-                                                    size="small"
-                                                    sx={{
-                                                        height: 24,
-                                                        borderColor: survey.voted ? "#fde68a" : "#bbf7d0",
-                                                        backgroundColor: survey.voted ? "#fffbeb" : "#f0fdf4",
-                                                        color: survey.voted ? "#b45309" : "#15803d",
-                                                        fontWeight: 600,
-                                                        fontSize: "0.72rem"
-                                                    }}
-                                                />
-
-                                                <Button
-                                                    variant={survey.voted ? "outlined" : "contained"}
-                                                    size="small"
-                                                    onClick={() => navigate(`/surveys/${survey.idSondaggio.replace("SURV_", "")}`)}
-                                                    sx={{
-                                                        height: 34,
-                                                        px: 2.2,
-                                                        backgroundColor: survey.voted ? "transparent" : OHEL_GREEN,
-                                                        borderColor: survey.voted ? OHEL_OCHRE : "transparent",
-                                                        color: survey.voted ? OHEL_OCHRE : "#ffffff",
-                                                        borderRadius: "10px",
-                                                        textTransform: "none",
-                                                        fontWeight: "700",
-                                                        fontSize: "0.78rem",
-                                                        boxShadow: survey.voted ? "none" : "0 2px 8px rgba(46, 91, 67, 0.15)",
-                                                        "&:hover": {
-                                                            backgroundColor: survey.voted ? "#fffbeb" : "#1e382b",
-                                                        }
-                                                    }}
-                                                >
-                                                    {survey.voted ? "Modifica Risposte →" : "Compila Disponibilità →"}
-                                                </Button>
-                                            </Box>
-                                        </Box>
-                                    </CardContent>
-                                </Card>
-                            ))
+                                        </CardContent>
+                                    </Card>
+                                ))}
+                            </Stack>
                         ) : (
                             <Card sx={{ borderRadius: "18px", border: "1px dashed #cbd5e1", backgroundColor: "#ffffff" }}>
-                                <CardContent sx={{ p: 2, textAlign: "center", display: "flex", alignItems: "center", justifyContent: "center", gap: 1 }}>
+                                <CardContent sx={{ p: 2.5, textAlign: "center", display: "flex", alignItems: "center", justifyContent: "center", gap: 1 }}>
                                     <CheckCircleOutlineIcon sx={{ fontSize: 20, color: OHEL_SAGE }} />
-                                    <Typography variant="body2" fontWeight="600" sx={{ color: "#64748b", fontSize: "0.82rem" }}>
+                                    <Typography variant="body2" fontWeight="600" sx={{ color: "#64748b", fontSize: "0.84rem" }}>
                                         Nessuna consultazione in sospeso. Tutto aggiornato!
                                     </Typography>
                                 </CardContent>
@@ -362,19 +367,19 @@ function Dashboard() {
                         )}
                     </Box>
 
-                    {/* 3. SCORCIATOIE STRUMENTI (4 TESSERE BILANCIATE PER ADMIN) */}
-                    <Box sx={{ gridColumn: { xs: "span 2", sm: "span 12" } }}>
-                        <Typography variant="caption" fontWeight="800" sx={{ color: "#475569", textTransform: "uppercase", letterSpacing: "0.06em", pl: 0.5, mb: 0.8, display: "block", fontSize: "0.72rem" }}>
+                    {/* 3. SCORCIATOIE STRUMENTI */}
+                    <Box sx={{ gridColumn: { xs: "span 2", sm: "span 12" }, mt: 1 }}>
+                        <Typography variant="caption" fontWeight="800" sx={{ color: "#475569", textTransform: "uppercase", letterSpacing: "0.06em", pl: 0.5, mb: 1.5, display: "block", fontSize: "0.75rem" }}>
                             📌 Strumenti Gestionali
                         </Typography>
 
                         <Box sx={{
                             display: "grid",
                             gridTemplateColumns: user.isAdmin ? { xs: "repeat(2, 1fr)", sm: "repeat(12, 1fr)" } : "1fr",
-                            gap: 1.8
+                            gap: 2
                         }}>
 
-                            {/* TESSERA 1: RISULTATI SONDAGGI (ACCESSIBILE A TUTTI) */}
+                            {/* TESSERA 1: RISULTATI SONDAGGI */}
                             <Card sx={{
                                 gridColumn: user.isAdmin ? { xs: "span 1", sm: "span 3" } : "1 / -1",
                                 display: "flex",
@@ -388,7 +393,7 @@ function Dashboard() {
                                 transition: "all 0.2s ease",
                                 "&:hover": { transform: "translateY(-2px)" }
                             }}>
-                                <CardContent sx={{ p: 2, "&:last-child": { pb: 2 }, display: "flex", flexDirection: "column", height: "100%", justifyContent: "space-between" }}>
+                                <CardContent sx={{ p: 2.2, "&:last-child": { pb: 2.2 }, display: "flex", flexDirection: "column", height: "100%", justifyContent: "space-between" }}>
                                     <Box mb={1.5}>
                                         <Box display="flex" alignItems="center" gap={1} mb={0.6}>
                                             <Box sx={{ backgroundColor: "#f3e8ff", p: 0.7, borderRadius: "8px", display: "flex", shrink: 0 }}>
@@ -420,12 +425,12 @@ function Dashboard() {
                                             "&:hover": { backgroundColor: "#52467b" }
                                         }}
                                     >
-                                        Vedi Risultati →
+                                        Vedi Risultati
                                     </Button>
                                 </CardContent>
                             </Card>
 
-                            {/* TESSERA 2: NUOVO SONDAGGIO (ADMIN) */}
+                            {/* TESSERA 2: NUOVO SONDAGGIO */}
                             {user.isAdmin && (
                                 <Card sx={{
                                     gridColumn: { xs: "span 1", sm: "span 3" },
@@ -440,7 +445,7 @@ function Dashboard() {
                                     transition: "all 0.2s ease",
                                     "&:hover": { transform: "translateY(-2px)" }
                                 }}>
-                                    <CardContent sx={{ p: 2, "&:last-child": { pb: 2 }, display: "flex", flexDirection: "column", height: "100%", justifyContent: "space-between" }}>
+                                    <CardContent sx={{ p: 2.2, "&:last-child": { pb: 2.2 }, display: "flex", flexDirection: "column", height: "100%", justifyContent: "space-between" }}>
                                         <Box mb={1.5}>
                                             <Box display="flex" alignItems="center" gap={1} mb={0.6}>
                                                 <Box sx={{ backgroundColor: "#ffedd5", p: 0.7, borderRadius: "8px", display: "flex", shrink: 0 }}>
@@ -472,13 +477,13 @@ function Dashboard() {
                                                 "&:hover": { backgroundColor: "#c2410c" }
                                             }}
                                         >
-                                            Crea Ora →
+                                            Crea Ora
                                         </Button>
                                     </CardContent>
                                 </Card>
                             )}
 
-                            {/* TESSERA 3: GESTIONE SONDAGGI (SOLO ADMIN - PUNTA A /surveys/manage) */}
+                            {/* TESSERA 3: GESTIONE SONDAGGI */}
                             {user.isAdmin && (
                                 <Card sx={{
                                     gridColumn: { xs: "span 1", sm: "span 3" },
@@ -493,7 +498,7 @@ function Dashboard() {
                                     transition: "all 0.2s ease",
                                     "&:hover": { transform: "translateY(-2px)" }
                                 }}>
-                                    <CardContent sx={{ p: 2, "&:last-child": { pb: 2 }, display: "flex", flexDirection: "column", height: "100%", justifyContent: "space-between" }}>
+                                    <CardContent sx={{ p: 2.2, "&:last-child": { pb: 2.2 }, display: "flex", flexDirection: "column", height: "100%", justifyContent: "space-between" }}>
                                         <Box mb={1.5}>
                                             <Box display="flex" alignItems="center" gap={1} mb={0.6}>
                                                 <Box sx={{ backgroundColor: "#ccfbf1", p: 0.7, borderRadius: "8px", display: "flex", shrink: 0 }}>
@@ -525,13 +530,13 @@ function Dashboard() {
                                                 "&:hover": { backgroundColor: "#115e59" }
                                             }}
                                         >
-                                            Gestisci →
+                                            Gestisci
                                         </Button>
                                     </CardContent>
                                 </Card>
                             )}
 
-                            {/* TESSERA 4: REGISTRO PRESENZE (ADMIN) */}
+                            {/* TESSERA 4: REGISTRO PRESENZE */}
                             {user.isAdmin && (
                                 <Card sx={{
                                     gridColumn: { xs: "span 1", sm: "span 3" },
@@ -546,7 +551,7 @@ function Dashboard() {
                                     transition: "all 0.2s ease",
                                     "&:hover": { transform: "translateY(-2px)" }
                                 }}>
-                                    <CardContent sx={{ p: 2, "&:last-child": { pb: 2 }, display: "flex", flexDirection: "column", height: "100%", justifyContent: "space-between" }}>
+                                    <CardContent sx={{ p: 2.2, "&:last-child": { pb: 2.2 }, display: "flex", flexDirection: "column", height: "100%", justifyContent: "space-between" }}>
                                         <Box mb={1.5}>
                                             <Box display="flex" alignItems="center" gap={1} mb={0.6}>
                                                 <Box sx={{ backgroundColor: "#e0f2fe", p: 0.7, borderRadius: "8px", display: "flex", shrink: 0 }}>
@@ -578,7 +583,7 @@ function Dashboard() {
                                                 "&:hover": { backgroundColor: "#1d4ed8" }
                                             }}
                                         >
-                                            Consulta →
+                                            Consulta
                                         </Button>
                                     </CardContent>
                                 </Card>

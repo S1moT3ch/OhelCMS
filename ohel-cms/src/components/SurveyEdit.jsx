@@ -1,9 +1,9 @@
 import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import CONFIG from "../config/config"; // Config importata correttamente
+import CONFIG from "../config/config";
 import HeaderCompact from "./HeaderCompact";
 import Footer from "../components/Footer";
-import { clearAllCache, clearCachePattern } from "../utils/cacheManager";
+import { getCache, clearAllCache, clearCachePattern } from "../utils/cacheManager";
 import MessageDialog from "./MessageDialog";
 
 // Importazioni Material-UI
@@ -17,29 +17,35 @@ import {
     Button,
     IconButton,
     Divider,
-    Stack
+    Stack,
+    Dialog,
+    DialogTitle,
+    DialogContent,
+    DialogActions,
+    Alert
 } from "@mui/material";
 import DeleteIcon from "@mui/icons-material/Delete";
 import AddIcon from "@mui/icons-material/Add";
+import WarningAmberIcon from "@mui/icons-material/WarningAmber";
 
-// Palette cromatica espansa e dinamica basata sul logo
+// Palette cromatica Associazione Ohel
 const OHEL_GREEN = "#2e5b43";
 const OHEL_SAGE = "#52796f";
-const OHEL_OCHRE = "#d9922b";
 const OHEL_LIGHT_GREEN = "#f4f7f5";
 const OHEL_TEXT_DARK = "#1e382b";
 
 function SurveyEdit() {
     const navigate = useNavigate();
     const [submitting, setSubmitting] = useState(false);
+    const [confirmDialogOpen, setConfirmDialogOpen] = useState(false);
+    const [existingActiveSurveys, setExistingActiveSurveys] = useState([]);
     const [dialog, setDialog] = useState({ open: false, title: "", message: "", severity: "info", callback: null });
+
+    const { URL_APPS_SCRIPT } = CONFIG;
 
     const showDialog = (title, message, severity = "info", callback = null) => {
         setDialog({ open: true, title, message, severity, callback });
     };
-
-    // Estrazione dell'URL del backend come nell'esempio della Home
-    const { URL_APPS_SCRIPT } = CONFIG;
 
     useEffect(() => {
         const storedUser = localStorage.getItem("userProfile");
@@ -112,10 +118,42 @@ function SurveyEdit() {
         }
     };
 
-    // Interazione reale con il backend Google Apps Script tramite POST
+    // Controllo di sondaggi già attivi prima dell'invio
     const handleSubmit = async (e) => {
         e.preventDefault();
+
+        const storedUser = localStorage.getItem("userProfile");
+        const email = storedUser ? JSON.parse(storedUser).email : "";
+
+        let activeSurveys = [];
+        const cachedSurveys = getCache(`surveys_active_${email}`);
+        if (cachedSurveys && cachedSurveys.data) {
+            activeSurveys = cachedSurveys.data;
+        } else if (email) {
+            try {
+                const res = await fetch(`${URL_APPS_SCRIPT}?action=GET_ACTIVE_SURVEYS&email=${encodeURIComponent(email)}`);
+                const data = await res.json();
+                if (data.status === "success" && data.surveys) {
+                    activeSurveys = data.surveys;
+                }
+            } catch (err) {
+                console.warn("Errore durante la verifica dei sondaggi attivi:", err);
+            }
+        }
+
+        // Se ci sono sondaggi vecchi attivi, avvisiamo l'admin tramite Dialog
+        if (activeSurveys && activeSurveys.length > 0) {
+            setExistingActiveSurveys(activeSurveys);
+            setConfirmDialogOpen(true);
+        } else {
+            executeSurveyCreation();
+        }
+    };
+
+    // Esecuzione effettiva della creazione sondaggio e disattivazione vecchi sondaggi
+    const executeSurveyCreation = async () => {
         setSubmitting(true);
+        setConfirmDialogOpen(false);
 
         const idToken = localStorage.getItem("authToken");
         if (!idToken) {
@@ -123,9 +161,36 @@ function SurveyEdit() {
             return;
         }
 
+        const storedUser = localStorage.getItem("userProfile");
+        const email = storedUser ? JSON.parse(storedUser).email : "";
+
+        // 1. Disattivazione esplicita nel DB per ciascun vecchio sondaggio attivo
+        if (existingActiveSurveys && existingActiveSurveys.length > 0) {
+            for (const oldSurvey of existingActiveSurveys) {
+                try {
+                    await fetch(URL_APPS_SCRIPT, {
+                        method: "POST",
+                        mode: "cors",
+                        body: JSON.stringify({
+                            action: "TOGGLE_SURVEY_STATUS",
+                            token: idToken,
+                            payload: {
+                                idSondaggio: oldSurvey.idSondaggio,
+                                newStatus: "DISATTIVATO"
+                            }
+                        })
+                    });
+                } catch (err) {
+                    console.warn(`Impossibile disattivare sondaggio ${oldSurvey.idSondaggio}:`, err);
+                }
+            }
+        }
+
+        // 2. Creazione del nuovo sondaggio attivo
         const surveyPayload = {
             title,
             description,
+            deactivatePrevious: true,
             dates: dates.map(({ dateValue, startTime, endTime, subtitle, timeSlots, notes }) => ({
                 date: dateValue,
                 timeRange: { start: startTime, end: endTime },
@@ -153,14 +218,18 @@ function SurveyEdit() {
             const data = await response.json();
 
             if (data.status === "success") {
+                clearCachePattern("surveys");
                 clearCachePattern("surveys_active");
-                showDialog("Sondaggio Pubblicato", "🚀 Nuovo sondaggio pubblicato con successo!", "success", () => navigate("/dashboard"));
+                clearCachePattern("surveys_manage");
+                if (email) clearCachePattern(`surveys_active_${email}`);
+
+                showDialog("Sondaggio Pubblicato", "🚀 Nuovo sondaggio pubblicato con successo! I sondaggi precedenti sono stati disattivati.", "success", () => navigate("/dashboard"));
             } else {
                 showDialog("Errore Salvataggio", "Impossibile salvare il sondaggio: " + data.message, "error");
             }
         } catch (err) {
             console.error("[ERRORE PUBBLICAZIONE SONDAGGIO]:", err);
-            showDialog("Errore di Rete", "Errore di rete. Verifica la connessione o le configurazioni CORS del backend.", "error");
+            showDialog("Errore di Rete", "Impossibile connettersi al server del backend. Riprova più tardi.", "error");
         } finally {
             setSubmitting(false);
         }
@@ -222,15 +291,11 @@ function SurveyEdit() {
                                     value={title}
                                     onChange={(e) => setTitle(e.target.value)}
                                     slotProps={{ inputLabel: { shrink: true } }}
-                                    sx={{
-                                        "& .MuiOutlinedInput-root.Mui-focused .MuiOutlinedInput-notchedOutline": { borderColor: OHEL_SAGE },
-                                        "& .MuiInputLabel-root.Mui-focused": { color: OHEL_SAGE }
-                                    }}
                                 />
 
                                 <TextField
-                                    label="Note o indicazioni generali per i soci"
-                                    placeholder="es. Seleziona le fasce orarie in cui sei disponibile per le attività associative."
+                                    label="Descrizione / Note per i soci (opzionale)"
+                                    placeholder="es. Indica la tua disponibilità per le giornate del mese..."
                                     variant="outlined"
                                     multiline
                                     rows={2}
@@ -239,199 +304,226 @@ function SurveyEdit() {
                                     value={description}
                                     onChange={(e) => setDescription(e.target.value)}
                                     slotProps={{ inputLabel: { shrink: true } }}
-                                    sx={{
-                                        "& .MuiOutlinedInput-root.Mui-focused .MuiOutlinedInput-notchedOutline": { borderColor: OHEL_SAGE },
-                                        "& .MuiInputLabel-root.Mui-focused": { color: OHEL_SAGE }
-                                    }}
                                 />
                             </CardContent>
                         </Card>
 
-                        <Typography
-                            variant="caption"
-                            fontWeight="700"
-                            sx={{ color: "#406353", textTransform: "uppercase", letterSpacing: "0.05em", pl: 0.5, mt: 1 }}
-                        >
-                            2. Configura Date e Fasce Orarie
-                        </Typography>
+                        {/* ELENCO CARD DATE */}
+                        <Box display="flex" alignItems="center" justifyContent="space-between" px={0.5} mt={1}>
+                            <Typography variant="subtitle1" fontWeight="800" sx={{ color: OHEL_TEXT_DARK }}>
+                                2. Date e Fasce Orarie
+                            </Typography>
+                            <Typography variant="caption" sx={{ color: OHEL_SAGE, fontWeight: 600 }}>
+                                {dates.length} {dates.length === 1 ? "data inserita" : "date inserite"}
+                            </Typography>
+                        </Box>
 
-                        {/* BLOCCO DELLE DATE DINAMICHE */}
-                        {dates.map((dateItem, index) => (
-                            <Card
-                                key={dateItem.id}
-                                sx={{
-                                    borderRadius: "20px",
-                                    border: "1px solid #e1ebe5",
-                                    borderLeft: `5px solid ${dateItem.dateValue ? OHEL_GREEN : OHEL_OCHRE}`,
-                                    backgroundColor: dateItem.dateValue ? "#ffffff" : "#fdfbf7",
-                                    position: "relative",
-                                    transition: "all 0.3s ease"
-                                }}
-                            >
+                        {dates.map((item, index) => (
+                            <Card key={item.id} sx={{
+                                borderRadius: "20px",
+                                border: "1px solid #e1ebe5",
+                                backgroundColor: "#ffffff",
+                                boxShadow: "0 4px 12px rgba(46, 91, 67, 0.02)"
+                            }}>
                                 <CardContent sx={{ p: 2.5, display: "flex", flexDirection: "column", gap: 2 }}>
-                                    <Box display="flex" justifyContent="space-between" alignItems="center">
-                                        <Typography
-                                            variant="subtitle2"
-                                            fontWeight="800"
-                                            color={dateItem.dateValue ? OHEL_GREEN : OHEL_OCHRE}
-                                        >
-                                            {formatHeaderDate(dateItem.dateValue, index)}
+                                    <Box display="flex" alignItems="center" justifyContent="space-between">
+                                        <Typography variant="subtitle2" fontWeight="800" sx={{ color: OHEL_GREEN }}>
+                                            📅 {formatHeaderDate(item.dateValue, index)}
                                         </Typography>
-
                                         {dates.length > 1 && (
                                             <IconButton
-                                                color="error"
                                                 size="small"
+                                                color="error"
                                                 disabled={submitting}
-                                                onClick={() => removeDateRow(dateItem.id)}
+                                                onClick={() => removeDateRow(item.id)}
                                             >
                                                 <DeleteIcon fontSize="small" />
                                             </IconButton>
                                         )}
                                     </Box>
 
-                                    {/* RIGA 1: DATA E SOTTOTITOLO */}
-                                    <Stack direction={{ xs: "column", sm: "row" }} gap={2}>
-                                        <TextField
-                                            type="date"
-                                            label="Scegli il Giorno"
-                                            required
-                                            disabled={submitting}
-                                            fullWidth
-                                            value={dateItem.dateValue}
-                                            onChange={(e) => updateDateRow(dateItem.id, "dateValue", e.target.value)}
-                                            slotProps={{ inputLabel: { shrink: true } }}
-                                            sx={{
-                                                "& .MuiOutlinedInput-root.Mui-focused .MuiOutlinedInput-notchedOutline": { borderColor: OHEL_GREEN },
-                                                "& .MuiInputLabel-root.Mui-focused": { color: OHEL_GREEN }
-                                            }}
-                                        />
-                                        <TextField
-                                            label="Sottotitolo della data (Opzionale)"
-                                            placeholder="es. Serata coi ragazzi 12-14"
-                                            disabled={submitting}
-                                            fullWidth
-                                            value={dateItem.subtitle}
-                                            onChange={(e) => updateDateRow(dateItem.id, "subtitle", e.target.value)}
-                                            slotProps={{ inputLabel: { shrink: true } }}
-                                            sx={{
-                                                "& .MuiOutlinedInput-root.Mui-focused .MuiOutlinedInput-notchedOutline": { borderColor: OHEL_GREEN },
-                                                "& .MuiInputLabel-root.Mui-focused": { color: OHEL_GREEN }
-                                            }}
-                                        />
-                                    </Stack>
-
-                                    {/* RANGE ORARIO (DALLE / ALLE) */}
-                                    <Stack direction="row" gap={2}>
-                                        <TextField
-                                            type="time"
-                                            label="Orario Inizio (Dalle)"
-                                            required
-                                            disabled={submitting}
-                                            fullWidth
-                                            value={dateItem.startTime}
-                                            onChange={(e) => updateDateRow(dateItem.id, "startTime", e.target.value)}
-                                            slotProps={{ inputLabel: { shrink: true } }}
-                                            sx={{
-                                                "& .MuiOutlinedInput-root.Mui-focused .MuiOutlinedInput-notchedOutline": { borderColor: OHEL_GREEN },
-                                                "& .MuiInputLabel-root.Mui-focused": { color: OHEL_GREEN }
-                                            }}
-                                        />
-                                        <TextField
-                                            type="time"
-                                            label="Orario Fine (Alle)"
-                                            required
-                                            disabled={submitting}
-                                            fullWidth
-                                            value={dateItem.endTime}
-                                            onChange={(e) => updateDateRow(dateItem.id, "endTime", e.target.value)}
-                                            slotProps={{ inputLabel: { shrink: true } }}
-                                            sx={{
-                                                "& .MuiOutlinedInput-root.Mui-focused .MuiOutlinedInput-notchedOutline": { borderColor: OHEL_GREEN },
-                                                "& .MuiInputLabel-root.Mui-focused": { color: OHEL_GREEN }
-                                            }}
-                                        />
-                                    </Stack>
-
                                     <TextField
-                                        label="Fasce Orarie Selezionabili (separate da virgola)"
-                                        placeholder="Mattina, Pomeriggio, Sera"
+                                        label="Seleziona Data"
+                                        type="date"
                                         required
                                         disabled={submitting}
                                         fullWidth
-                                        value={dateItem.timeSlots}
-                                        onChange={(e) => updateDateRow(dateItem.id, "timeSlots", e.target.value)}
-                                        helperText="I soci indicheranno la disponibilità per queste fasce."
+                                        value={item.dateValue}
+                                        onChange={(e) => updateDateRow(item.id, "dateValue", e.target.value)}
                                         slotProps={{ inputLabel: { shrink: true } }}
-                                        sx={{
-                                            "& .MuiOutlinedInput-root.Mui-focused .MuiOutlinedInput-notchedOutline": { borderColor: OHEL_GREEN },
-                                            "& .MuiInputLabel-root.Mui-focused": { color: OHEL_GREEN }
-                                        }}
+                                    />
+
+                                    <Stack direction="row" gap={1.5}>
+                                        <TextField
+                                            label="Ora Inizio"
+                                            type="time"
+                                            disabled={submitting}
+                                            fullWidth
+                                            value={item.startTime}
+                                            onChange={(e) => updateDateRow(item.id, "startTime", e.target.value)}
+                                            slotProps={{ inputLabel: { shrink: true } }}
+                                        />
+                                        <TextField
+                                            label="Ora Fine"
+                                            type="time"
+                                            disabled={submitting}
+                                            fullWidth
+                                            value={item.endTime}
+                                            onChange={(e) => updateDateRow(item.id, "endTime", e.target.value)}
+                                            slotProps={{ inputLabel: { shrink: true } }}
+                                        />
+                                    </Stack>
+
+                                    <TextField
+                                        label="Fasce Orarie (separate da virgola)"
+                                        disabled={submitting}
+                                        fullWidth
+                                        value={item.timeSlots}
+                                        onChange={(e) => updateDateRow(item.id, "timeSlots", e.target.value)}
+                                        helperText="I soci potranno scegliere una o più di queste opzioni"
+                                        slotProps={{ inputLabel: { shrink: true } }}
                                     />
 
                                     <TextField
-                                        label="Indicazioni specifiche (Opzionali)"
-                                        placeholder="es. Servono almeno 3 persone"
+                                        label="Sottotitolo / Dettaglio (opzionale)"
+                                        placeholder="es. Pranzo sociale e riunione"
                                         disabled={submitting}
                                         fullWidth
-                                        value={dateItem.notes}
-                                        onChange={(e) => updateDateRow(dateItem.id, "notes", e.target.value)}
+                                        value={item.subtitle}
+                                        onChange={(e) => updateDateRow(item.id, "subtitle", e.target.value)}
                                         slotProps={{ inputLabel: { shrink: true } }}
-                                        sx={{
-                                            "& .MuiOutlinedInput-root.Mui-focused .MuiOutlinedInput-notchedOutline": { borderColor: OHEL_GREEN },
-                                            "& .MuiInputLabel-root.Mui-focused": { color: OHEL_GREEN }
-                                        }}
+                                    />
+
+                                    <TextField
+                                        label="Note o informazioni utili"
+                                        placeholder="es. Portare abiti comodi"
+                                        disabled={submitting}
+                                        fullWidth
+                                        value={item.notes}
+                                        onChange={(e) => updateDateRow(item.id, "notes", e.target.value)}
+                                        slotProps={{ inputLabel: { shrink: true } }}
                                     />
                                 </CardContent>
                             </Card>
                         ))}
 
-                        {/* BOTTONE AGGIUNGI DATA */}
                         <Button
                             variant="outlined"
                             startIcon={<AddIcon />}
-                            disabled={submitting}
                             onClick={addDateRow}
+                            disabled={submitting}
                             sx={{
-                                color: OHEL_OCHRE,
-                                borderColor: "#f3d19e",
-                                borderRadius: "12px",
+                                borderRadius: "14px",
                                 textTransform: "none",
-                                fontWeight: "750",
+                                fontWeight: 700,
+                                borderColor: OHEL_SAGE,
+                                color: OHEL_GREEN,
                                 py: 1.2,
-                                backgroundColor: "#ffffff",
-                                "&:hover": { borderColor: OHEL_OCHRE, backgroundColor: "#fffbf2" }
+                                borderStyle: "dashed",
+                                borderWidth: 2,
+                                "&:hover": { borderWidth: 2, borderColor: OHEL_GREEN, backgroundColor: "rgba(46, 91, 67, 0.04)" }
                             }}
                         >
-                            Aggiungi un'altra data a questo sondaggio
+                            Aggiungi un'altra Data
                         </Button>
 
-                        <Divider sx={{ my: 1, borderColor: "#bad1c6" }} />
+                        <Divider sx={{ my: 1 }} />
 
-                        {/* PUBBLICAZIONE SONDAGGIO */}
                         <Button
                             type="submit"
                             variant="contained"
-                            fullWidth
                             disabled={submitting}
                             sx={{
-                                backgroundColor: OHEL_GREEN,
-                                color: "#ffffff",
-                                borderRadius: "12px",
-                                py: 1.5,
+                                borderRadius: "14px",
                                 textTransform: "none",
-                                fontWeight: "700",
+                                fontWeight: 800,
                                 fontSize: "1rem",
-                                boxShadow: "0 4px 12px rgba(46, 91, 67, 0.15)",
-                                "&:hover": { backgroundColor: OHEL_TEXT_DARK }
+                                py: 1.5,
+                                backgroundColor: OHEL_GREEN,
+                                boxShadow: "0 4px 12px rgba(46, 91, 67, 0.2)",
+                                "&:hover": { backgroundColor: "#1e382b" }
                             }}
                         >
-                            {submitting ? "Pubblicazione in corso..." : "🚀 Pubblica Sondaggio Presenze"}
+                            {submitting ? "Pubblicazione in corso..." : "Pubblica Sondaggio Presenze →"}
                         </Button>
 
                     </Stack>
                 </form>
+
             </Container>
+
+            {/* DIALOG DI AVVISO DISATTIVAZIONE VECCHI SONDAGGI ATTIVI */}
+            <Dialog
+                open={confirmDialogOpen}
+                onClose={() => !submitting && setConfirmDialogOpen(false)}
+                maxWidth="xs"
+                fullWidth
+                PaperProps={{
+                    sx: {
+                        borderRadius: "20px",
+                        p: 1
+                    }
+                }}
+            >
+                <DialogTitle sx={{ fontWeight: 800, color: OHEL_TEXT_DARK, display: "flex", alignItems: "center", gap: 1.2, pb: 1 }}>
+                    <WarningAmberIcon sx={{ color: "#d97706", fontSize: "1.8rem" }} />
+                    Disattivazione Sondaggi Attivi
+                </DialogTitle>
+
+                <DialogContent dividers sx={{ py: 2 }}>
+                    <Typography variant="body2" sx={{ color: "#475569", lineHeight: 1.5, mb: 1.5 }}>
+                        Stai per pubblicare il nuovo sondaggio <strong>"{title}"</strong>.
+                    </Typography>
+
+                    <Alert severity="warning" sx={{ borderRadius: "12px", mb: 1.5, fontSize: "0.82rem", fontWeight: 600 }}>
+                        Attualmente risultano attivi i seguenti sondaggi:
+                    </Alert>
+
+                    <Box sx={{ backgroundColor: "#f8fafc", p: 1.5, borderRadius: "12px", border: "1px solid #e2e8f0", mb: 2 }}>
+                        {existingActiveSurveys.map((survey, index) => (
+                            <Typography key={index} variant="body2" fontWeight="700" sx={{ color: OHEL_TEXT_DARK, fontSize: "0.85rem" }}>
+                                • {survey.title || survey.idSondaggio}
+                            </Typography>
+                        ))}
+                    </Box>
+
+                    <Typography variant="body2" sx={{ color: "#475569", lineHeight: 1.4, mb: 1.5 }}>
+                        Pubblicando quello nuovo, i vecchi sondaggi attivi verranno automaticamente disattivati.
+                    </Typography>
+
+                    <Typography variant="caption" sx={{ color: OHEL_SAGE, fontSize: "0.78rem", display: "block", fontStyle: "italic", backgroundColor: "#f4f7f5", p: 1, borderRadius: "8px" }}>
+                        💡 Potrai comunque riabilitare qualsiasi sondaggio disattivato in ogni momento dal <strong>Pannello di Gestione Sondaggi</strong>.
+                    </Typography>
+                </DialogContent>
+
+                <DialogActions sx={{ p: 2, gap: 1 }}>
+                    <Button
+                        onClick={() => setConfirmDialogOpen(false)}
+                        disabled={submitting}
+                        sx={{ color: OHEL_SAGE, fontWeight: 700, textTransform: "none" }}
+                    >
+                        Annulla
+                    </Button>
+
+                    <Button
+                        variant="contained"
+                        onClick={executeSurveyCreation}
+                        disabled={submitting}
+                        sx={{
+                            backgroundColor: OHEL_GREEN,
+                            color: "#ffffff",
+                            borderRadius: "10px",
+                            fontWeight: 800,
+                            textTransform: "none",
+                            px: 2.2,
+                            boxShadow: "0 2px 8px rgba(46, 91, 67, 0.2)",
+                            "&:hover": { backgroundColor: "#1e382b" }
+                        }}
+                    >
+                        {submitting ? "Pubblicazione..." : "Conferma e Pubblica →"}
+                    </Button>
+                </DialogActions>
+            </Dialog>
 
             <Footer />
 
