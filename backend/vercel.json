@@ -1,0 +1,25 @@
+{
+  "version": 2,
+  "rewrites": [
+    {
+      "source": "/admin",
+      "destination": "/api/index?route=admin"
+    },
+    {
+      "source": "/api/admin",
+      "destination": "/api/index?route=admin"
+    },
+    {
+      "source": "/api/admin/:match*",
+      "destination": "/api/index?admin_action=:match*"
+    },
+    {
+      "source": "/admin/:match*",
+      "destination": "/api/index?admin_action=:match*"
+    },
+    {
+      "source": "/(.*)",
+      "destination": "/api/index"
+    }
+  ]
+}
