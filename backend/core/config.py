@@ -63,3 +63,14 @@ REDIS_PREFIX_ADMIN_SESSION = "ohel:admin:session:"
 
 # Password Amministratore Backend (configurabile su Vercel Environment Variables)
 ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD", "ohelAdmin2026!")
+
+# MFA / 2FA per App Authenticator (Google Authenticator, Microsoft Authenticator, ecc.)
+# Può essere configurato da variabile d'ambiente o salvato dinamicamente in Redis
+ADMIN_MFA_SECRET = os.getenv("ADMIN_MFA_SECRET", "").strip().replace(" ", "").upper()
+REDIS_KEY_ADMIN_MFA = "ohel:admin:mfa_secret"
+
+# Activity Logs (autocancellazione garantita dopo 30 giorni)
+REDIS_KEY_LOGS_INDEX = "ohel:logs:index"
+REDIS_PREFIX_LOG = "ohel:log:"
+LOG_RETENTION_SECONDS = 30 * 24 * 60 * 60  # 30 giorni esatti (2.592.000 secondi)
+

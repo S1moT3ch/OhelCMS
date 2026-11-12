@@ -4,6 +4,7 @@ import CONFIG from "../config/config";
 import HeaderCompact from "./HeaderCompact";
 import Footer from "../components/Footer";
 import { getCache, setCache, clearCachePattern, clearAllCache } from "../utils/cacheManager";
+import { logClientEvent } from "../utils/logger";
 import LoadingScreen from "./LoadingScreen";
 import MessageDialog from "./MessageDialog";
 
@@ -29,6 +30,7 @@ import {
     DialogTitle,
     DialogContent,
     DialogActions,
+    Tooltip,
     useMediaQuery,
     useTheme
 } from "@mui/material";
@@ -44,6 +46,7 @@ import RestartAltIcon from "@mui/icons-material/RestartAlt";
 import DeleteOutlineIcon from "@mui/icons-material/DeleteOutline";
 import RestoreFromTrashIcon from "@mui/icons-material/RestoreFromTrash";
 import ReportProblemIcon from "@mui/icons-material/ReportProblem";
+import EditIcon from "@mui/icons-material/Edit";
 
 // Palette cromatica Associazione Ohel
 const OHEL_GREEN = "#2e5b43";
@@ -288,6 +291,7 @@ function SurveyManage() {
             if (hasError) {
                 showDialog("Attenzione", "Alcune modifiche potrebbero non essere state salvate correttamente sul server. Ricarica la pagina per verificare.", "warning");
             } else {
+                logClientEvent("CLIENT_MANAGE_SURVEYS", "Modifiche salvate: aggiornamento stati o eliminazione sondaggi nel database", { level: "SUCCESS" });
                 setSnackbar({
                     open: true,
                     message: pendingDeleteSurveys.length > 0
@@ -304,10 +308,19 @@ function SurveyManage() {
         }
     };
 
+    const storedUser = localStorage.getItem("userProfile");
+    const currentEmail = storedUser ? (JSON.parse(storedUser).email || "").toLowerCase().trim() : "";
+
+    const isSurveyOwner = useCallback((s) => {
+        if (!currentEmail || !s || !s.createdBy) return false;
+        return s.createdBy.toLowerCase().trim() === currentEmail;
+    }, [currentEmail]);
+
     const filteredSurveys = surveys.filter(s => {
         const matchesSearch = s.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
             (s.description && s.description.toLowerCase().includes(searchTerm.toLowerCase()));
 
+        if (filterStatus === "MINE") return matchesSearch && isSurveyOwner(s);
         if (filterStatus === "ACTIVE") return matchesSearch && s.active;
         if (filterStatus === "DISABLED") return matchesSearch && !s.active;
         return matchesSearch;
@@ -399,13 +412,25 @@ function SurveyManage() {
                         }}
                     />
 
-                    <Stack direction="row" gap={1} flexShrink={0}>
+                    <Stack direction="row" gap={1} flexShrink={0} flexWrap="wrap">
                         <Chip
                             label={`Tutti (${surveys.length})`}
                             onClick={() => setFilterStatus("ALL")}
                             color={filterStatus === "ALL" ? "primary" : "default"}
                             variant={filterStatus === "ALL" ? "filled" : "outlined"}
                             sx={{ fontWeight: 700, borderRadius: "8px", backgroundColor: filterStatus === "ALL" ? OHEL_TEAL : "transparent" }}
+                        />
+                        <Chip
+                            label={`Miei (${surveys.filter(s => isSurveyOwner(s) && !s.pendingDelete).length})`}
+                            onClick={() => setFilterStatus("MINE")}
+                            color={filterStatus === "MINE" ? "primary" : "default"}
+                            variant={filterStatus === "MINE" ? "filled" : "outlined"}
+                            sx={{
+                                fontWeight: 700,
+                                borderRadius: "8px",
+                                backgroundColor: filterStatus === "MINE" ? "#0f766e" : "transparent",
+                                color: filterStatus === "MINE" ? "#ffffff" : "inherit"
+                            }}
                         />
                         <Chip
                             label={`Attivi (${surveys.filter(s => s.active && !s.pendingDelete).length})`}
@@ -431,6 +456,7 @@ function SurveyManage() {
                             const initialMap = new Map(initialSurveys.map(s => [s.idSondaggio, s.active]));
                             const isStatusModified = initialMap.has(survey.idSondaggio) && initialMap.get(survey.idSondaggio) !== survey.active;
                             const isPendingDelete = survey.pendingDelete;
+                            const isOwner = isSurveyOwner(survey);
 
                             let borderStyle = "1px solid #e1ebe5";
                             let borderLeftColor = survey.active ? OHEL_GREEN : "#94a3b8";
@@ -491,6 +517,21 @@ function SurveyManage() {
                                                         />
                                                     )}
 
+                                                    {!isPendingDelete && (
+                                                        <Chip
+                                                            label={isOwner ? "Pubblicato da te" : `Autore: ${survey.createdByName || survey.createdBy || 'Sistema'}`}
+                                                            size="small"
+                                                            sx={{
+                                                                height: 22,
+                                                                backgroundColor: isOwner ? "#0f766e" : "#f1f5f9",
+                                                                color: isOwner ? "#ffffff" : "#64748b",
+                                                                fontWeight: 700,
+                                                                fontSize: "0.70rem",
+                                                                borderRadius: "6px"
+                                                            }}
+                                                        />
+                                                    )}
+
                                                     {isPendingDelete && (
                                                         <Chip
                                                             label="In Eliminazione"
@@ -531,23 +572,28 @@ function SurveyManage() {
 
                                             {/* INTERRUTTORE STATO LOCALE */}
                                             {!isPendingDelete && (
-                                                <Box display="flex" alignItems="center" gap={1} sx={{ backgroundColor: isStatusModified ? "#fff7ed" : "#f1f5f9", p: 0.8, px: 1.5, borderRadius: "12px", border: isStatusModified ? "1px solid #ffedd5" : "none" }}>
-                                                    <FormControlLabel
-                                                        control={
-                                                            <Switch
-                                                                checked={survey.active}
-                                                                onChange={() => handleToggleLocalStatus(survey.idSondaggio)}
-                                                                color="success"
-                                                                size="small"
+                                                <Box display="flex" alignItems="center" gap={1} sx={{ backgroundColor: isStatusModified ? "#fff7ed" : (isOwner ? "#f1f5f9" : "#f8fafc"), p: 0.8, px: 1.5, borderRadius: "12px", border: isStatusModified ? "1px solid #ffedd5" : "none" }}>
+                                                    <Tooltip title={!isOwner ? "Solo l'amministratore che ha pubblicato il sondaggio può modificarne lo stato" : ""}>
+                                                        <span>
+                                                            <FormControlLabel
+                                                                control={
+                                                                    <Switch
+                                                                        checked={survey.active}
+                                                                        disabled={!isOwner}
+                                                                        onChange={() => handleToggleLocalStatus(survey.idSondaggio)}
+                                                                        color="success"
+                                                                        size="small"
+                                                                    />
+                                                                }
+                                                                label={
+                                                                    <Typography variant="caption" fontWeight="800" sx={{ color: !isOwner ? "#94a3b8" : (survey.active ? "#15803d" : "#64748b"), fontSize: "0.78rem" }}>
+                                                                        {survey.active ? "Abilitato" : "Disabilitato"}
+                                                                    </Typography>
+                                                                }
+                                                                sx={{ m: 0 }}
                                                             />
-                                                        }
-                                                        label={
-                                                            <Typography variant="caption" fontWeight="800" sx={{ color: survey.active ? "#15803d" : "#64748b", fontSize: "0.78rem" }}>
-                                                                {survey.active ? "Abilitato" : "Disabilitato"}
-                                                            </Typography>
-                                                        }
-                                                        sx={{ m: 0 }}
-                                                    />
+                                                        </span>
+                                                    </Tooltip>
                                                 </Box>
                                             )}
                                         </Box>
@@ -584,22 +630,45 @@ function SurveyManage() {
                                                     Risultati
                                                 </Button>
 
-                                                <Button
-                                                    variant="outlined"
-                                                    color={isPendingDelete ? "info" : "error"}
-                                                    size="small"
-                                                    startIcon={isPendingDelete ? <RestoreFromTrashIcon style={{ fontSize: 15 }} /> : <DeleteOutlineIcon style={{ fontSize: 15 }} />}
-                                                    onClick={() => handleToggleLocalDelete(survey.idSondaggio)}
-                                                    sx={{
-                                                        height: 30,
-                                                        borderRadius: "8px",
-                                                        textTransform: "none",
-                                                        fontWeight: 700,
-                                                        fontSize: "0.76rem"
-                                                    }}
-                                                >
-                                                    {isPendingDelete ? "Ripristina" : "Elimina"}
-                                                </Button>
+                                                {isOwner && (
+                                                    <Button
+                                                        variant="outlined"
+                                                        size="small"
+                                                        startIcon={<EditIcon style={{ fontSize: 15 }} />}
+                                                        onClick={() => navigate("/surveys/edit", { state: { surveyToEdit: survey } })}
+                                                        sx={{
+                                                            height: 30,
+                                                            borderRadius: "8px",
+                                                            textTransform: "none",
+                                                            fontWeight: 700,
+                                                            borderColor: OHEL_TEAL,
+                                                            color: OHEL_TEAL,
+                                                            fontSize: "0.76rem",
+                                                            "&:hover": { backgroundColor: "#ccfbf1", borderColor: "#0f766e" }
+                                                        }}
+                                                    >
+                                                        Modifica
+                                                    </Button>
+                                                )}
+
+                                                {isOwner && (
+                                                    <Button
+                                                        variant="outlined"
+                                                        color={isPendingDelete ? "info" : "error"}
+                                                        size="small"
+                                                        startIcon={isPendingDelete ? <RestoreFromTrashIcon style={{ fontSize: 15 }} /> : <DeleteOutlineIcon style={{ fontSize: 15 }} />}
+                                                        onClick={() => handleToggleLocalDelete(survey.idSondaggio)}
+                                                        sx={{
+                                                            height: 30,
+                                                            borderRadius: "8px",
+                                                            textTransform: "none",
+                                                            fontWeight: 700,
+                                                            fontSize: "0.76rem"
+                                                        }}
+                                                    >
+                                                        {isPendingDelete ? "Ripristina" : "Elimina"}
+                                                    </Button>
+                                                )}
                                             </Stack>
                                         </Box>
                                     </CardContent>

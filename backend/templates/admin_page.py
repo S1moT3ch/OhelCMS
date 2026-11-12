@@ -84,6 +84,25 @@ def get_admin_html() -> str:
           <p class="text-[11px] text-slate-400 mt-2">Configurata nella variabile d'ambiente <code>ADMIN_PASSWORD</code> su Vercel.</p>
         </div>
 
+        <!-- Gruppo Campo Codice MFA Authenticator -->
+        <div id="mfa-field-group" class="hidden space-y-1 fade-in">
+          <div class="flex items-center justify-between">
+            <label class="block text-xs font-semibold uppercase tracking-wider text-slate-600">Codice App Authenticator (2FA)</label>
+            <span class="text-[10px] text-brand-600 font-medium">6 cifre temporanee</span>
+          </div>
+          <input 
+            type="text" 
+            id="input-otp" 
+            maxlength="6" 
+            inputmode="numeric" 
+            pattern="[0-9]*" 
+            placeholder="es. 123456" 
+            autocomplete="one-time-code"
+            class="w-full px-4 py-3 rounded-xl border border-slate-300 focus:ring-2 focus:ring-brand-500 focus:border-brand-500 outline-none text-base tracking-widest text-center font-mono font-bold transition"
+          >
+          <p class="text-[11px] text-slate-400">Inserisci il codice mostrato su Google Authenticator o Microsoft Authenticator.</p>
+        </div>
+
         <button 
           type="submit" 
           id="btn-login"
@@ -115,6 +134,10 @@ def get_admin_html() -> str:
         </div>
 
         <div class="flex items-center gap-2 sm:gap-3">
+          <button id="btn-mfa-badge" onclick="openMfaSetupModal()" class="px-3 py-2 text-xs font-semibold rounded-lg transition flex items-center gap-1.5 bg-slate-100 text-slate-700 hover:bg-slate-200">
+            <i id="mfa-badge-icon" class="fas fa-shield-halved text-slate-500"></i>
+            <span id="mfa-badge-text">2FA Authenticator</span>
+          </button>
           <button onclick="loadDashboardData()" class="px-3 py-2 text-xs font-semibold text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-lg transition flex items-center gap-1.5">
             <i class="fas fa-arrows-rotate"></i>
             <span class="hidden sm:inline">Aggiorna Dati</span>
@@ -130,48 +153,59 @@ def get_admin_html() -> str:
     <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 flex-1 w-full space-y-8">
       
       <!-- Sezione Statistiche Rapide -->
-      <div class="grid grid-cols-2 lg:grid-cols-4 gap-4">
+      <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 sm:gap-4">
         <!-- Totale Soci -->
-        <div class="bg-white p-5 rounded-2xl border border-slate-200/70 shadow-sm flex items-center gap-4">
-          <div class="w-12 h-12 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center text-xl shrink-0">
+        <div class="bg-white p-4 sm:p-5 rounded-2xl border border-slate-200/70 shadow-sm flex items-center gap-3.5">
+          <div class="w-11 h-11 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center text-lg shrink-0">
             <i class="fas fa-users"></i>
           </div>
           <div>
-            <div id="stat-total-users" class="text-2xl font-bold text-slate-900 leading-none">0</div>
+            <div id="stat-total-users" class="text-xl sm:text-2xl font-bold text-slate-900 leading-none">0</div>
             <div class="text-xs text-slate-500 font-medium mt-1">Soci Registrati</div>
           </div>
         </div>
 
         <!-- Admin CMS -->
-        <div class="bg-white p-5 rounded-2xl border border-slate-200/70 shadow-sm flex items-center gap-4">
-          <div class="w-12 h-12 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center text-xl shrink-0">
+        <div class="bg-white p-4 sm:p-5 rounded-2xl border border-slate-200/70 shadow-sm flex items-center gap-3.5">
+          <div class="w-11 h-11 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center text-lg shrink-0">
             <i class="fas fa-crown"></i>
           </div>
           <div>
-            <div id="stat-admin-users" class="text-2xl font-bold text-slate-900 leading-none">0</div>
-            <div class="text-xs text-slate-500 font-medium mt-1">Admin con Permessi</div>
+            <div id="stat-admin-users" class="text-xl sm:text-2xl font-bold text-slate-900 leading-none">0</div>
+            <div class="text-xs text-slate-500 font-medium mt-1">Admin CMS</div>
           </div>
         </div>
 
         <!-- Sondaggi Attivi -->
-        <div class="bg-white p-5 rounded-2xl border border-slate-200/70 shadow-sm flex items-center gap-4">
-          <div class="w-12 h-12 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center text-xl shrink-0">
+        <div class="bg-white p-4 sm:p-5 rounded-2xl border border-slate-200/70 shadow-sm flex items-center gap-3.5">
+          <div class="w-11 h-11 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center text-lg shrink-0">
             <i class="fas fa-calendar-check"></i>
           </div>
           <div>
-            <div id="stat-active-surveys" class="text-2xl font-bold text-slate-900 leading-none">0</div>
+            <div id="stat-active-surveys" class="text-xl sm:text-2xl font-bold text-slate-900 leading-none">0</div>
             <div class="text-xs text-slate-500 font-medium mt-1">Sondaggi Attivi</div>
           </div>
         </div>
 
         <!-- Totale Risposte -->
-        <div class="bg-white p-5 rounded-2xl border border-slate-200/70 shadow-sm flex items-center gap-4">
-          <div class="w-12 h-12 rounded-xl bg-purple-50 text-purple-600 flex items-center justify-center text-xl shrink-0">
+        <div class="bg-white p-4 sm:p-5 rounded-2xl border border-slate-200/70 shadow-sm flex items-center gap-3.5">
+          <div class="w-11 h-11 rounded-xl bg-purple-50 text-purple-600 flex items-center justify-center text-lg shrink-0">
             <i class="fas fa-envelope-open-text"></i>
           </div>
           <div>
-            <div id="stat-total-votes" class="text-2xl font-bold text-slate-900 leading-none">0</div>
-            <div class="text-xs text-slate-500 font-medium mt-1">Schede Voto Salva</div>
+            <div id="stat-total-votes" class="text-xl sm:text-2xl font-bold text-slate-900 leading-none">0</div>
+            <div class="text-xs text-slate-500 font-medium mt-1">Schede Voto</div>
+          </div>
+        </div>
+
+        <!-- Log Attività (30gg) -->
+        <div onclick="switchTab('logs')" class="cursor-pointer hover:border-brand-500/50 transition bg-white p-4 sm:p-5 rounded-2xl border border-slate-200/70 shadow-sm flex items-center gap-3.5 col-span-2 sm:col-span-1">
+          <div class="w-11 h-11 rounded-xl bg-slate-100 text-slate-700 flex items-center justify-center text-lg shrink-0">
+            <i class="fas fa-clock-rotate-left"></i>
+          </div>
+          <div>
+            <div id="stat-total-logs" class="text-xl sm:text-2xl font-bold text-slate-900 leading-none">0</div>
+            <div class="text-xs text-slate-500 font-medium mt-1">Log (30 giorni)</div>
           </div>
         </div>
       </div>
@@ -187,6 +221,11 @@ def get_admin_html() -> str:
           <i class="fas fa-list-check"></i>
           <span>Sondaggi & Presenze</span>
           <span id="badge-surveys-count" class="ml-1.5 px-2 py-0.5 text-xs bg-slate-100 text-slate-600 rounded-full font-bold">0</span>
+        </button>
+        <button onclick="switchTab('logs')" id="tab-btn-logs" class="px-5 py-3 text-sm font-semibold border-b-2 border-transparent text-slate-500 hover:text-slate-800 transition flex items-center gap-2">
+          <i class="fas fa-clock-rotate-left"></i>
+          <span>Log Attività</span>
+          <span id="badge-logs-count" class="ml-1.5 px-2 py-0.5 text-xs bg-slate-100 text-slate-600 rounded-full font-bold">0</span>
         </button>
       </div>
 
@@ -260,6 +299,83 @@ def get_admin_html() -> str:
         </div>
       </section>
 
+      <!-- ================= CONTENUTO TAB 3: LOG ATTIVITÀ (RETENTION 30 GG) ================= -->
+      <section id="tab-content-logs" class="hidden space-y-4">
+        <div class="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
+          <div>
+            <div class="flex items-center gap-2">
+              <h2 class="text-lg font-bold text-slate-900">Registro Attività e Audit (Frontend & Backend)</h2>
+              <span class="px-2.5 py-0.5 text-[11px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-full flex items-center gap-1">
+                <i class="fas fa-history text-[10px]"></i> Auto-cancellazione 30 gg
+              </span>
+            </div>
+            <p class="text-xs text-slate-500 mt-0.5">Tracciamento cronologico di accessi, modifiche ai sondaggi, votazioni e operazioni amministrative.</p>
+          </div>
+          
+          <div class="flex flex-wrap items-center gap-2">
+            <div class="relative w-full sm:w-56">
+              <i class="fas fa-search absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 text-xs"></i>
+              <input 
+                type="text" 
+                id="search-logs" 
+                oninput="filterLogs()" 
+                placeholder="Cerca azione, utente, IP..." 
+                class="w-full pl-9 pr-3 py-1.5 text-xs rounded-xl border border-slate-300 focus:ring-2 focus:ring-brand-500 outline-none"
+              >
+            </div>
+            <select id="filter-logs-source" onchange="filterLogs()" class="text-xs rounded-xl border border-slate-300 px-3 py-1.5 outline-none focus:ring-2 focus:ring-brand-500">
+              <option value="ALL">Tutte le sorgenti</option>
+              <option value="backend">Solo Backend ⚙️</option>
+              <option value="frontend">Solo Frontend 🌐</option>
+            </select>
+            <select id="filter-logs-level" onchange="filterLogs()" class="text-xs rounded-xl border border-slate-300 px-3 py-1.5 outline-none focus:ring-2 focus:ring-brand-500">
+              <option value="ALL">Tutti i livelli</option>
+              <option value="SUCCESS">SUCCESS</option>
+              <option value="INFO">INFO</option>
+              <option value="WARNING">WARNING</option>
+              <option value="ERROR">ERROR</option>
+            </select>
+            <button onclick="fetchLogs()" title="Ricarica Log" class="p-2 text-xs font-semibold text-slate-600 hover:text-brand-700 bg-slate-100 hover:bg-slate-200 rounded-xl transition flex items-center gap-1.5 px-3">
+              <i class="fas fa-rotate"></i>
+              <span class="hidden sm:inline">Aggiorna</span>
+            </button>
+            <button onclick="clearAllLogs()" title="Svuota tutti i log" class="p-2 text-xs font-semibold text-rose-600 hover:text-rose-700 bg-rose-50 hover:bg-rose-100 border border-rose-200 rounded-xl transition flex items-center gap-1.5 px-3">
+              <i class="fas fa-trash-can"></i>
+              <span class="hidden sm:inline">Svuota</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Tabella Log -->
+        <div class="bg-white rounded-2xl border border-slate-200/80 shadow-sm overflow-hidden">
+          <div class="overflow-x-auto">
+            <table class="w-full text-left text-xs">
+              <thead class="bg-slate-50/80 border-b border-slate-200 text-slate-500 font-semibold uppercase tracking-wider">
+                <tr>
+                  <th class="px-4 py-3.5 whitespace-nowrap">Data / Ora</th>
+                  <th class="px-4 py-3.5 whitespace-nowrap">Sorgente</th>
+                  <th class="px-4 py-3.5 whitespace-nowrap">Livello</th>
+                  <th class="px-4 py-3.5 whitespace-nowrap">Azione</th>
+                  <th class="px-4 py-3.5 whitespace-nowrap">Utente / IP</th>
+                  <th class="px-4 py-3.5">Dettagli Operazione</th>
+                </tr>
+              </thead>
+              <tbody id="logs-table-body" class="divide-y divide-slate-100">
+                <!-- Generato dinamicamente via JS -->
+              </tbody>
+            </table>
+          </div>
+          <div id="logs-empty" class="hidden p-12 text-center text-slate-400 text-sm">
+            <i class="fas fa-clock-rotate-left text-3xl mb-2 block"></i>
+            Nessun evento registrato nella finestra di 30 giorni.
+          </div>
+          <div class="p-3 bg-slate-50/60 border-t border-slate-100 flex items-center justify-between text-[11px] text-slate-500">
+            <span id="logs-counter">Visualizzati 0 log</span>
+            <span class="text-slate-400">Politica di retention: eliminazione automatica oltre 30 giorni (TTL Redis)</span>
+          </div>
+        </div>
+      </section>
+
     </main>
   </div>
 
@@ -288,11 +404,183 @@ def get_admin_html() -> str:
     </div>
   </div>
 
+  <!-- ================= MODALE MODIFICA SONDAGGIO ================= -->
+  <div id="modal-edit-survey" class="hidden fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
+    <div class="bg-white rounded-2xl shadow-2xl max-w-3xl w-full max-h-[90vh] flex flex-col border border-slate-200 fade-in">
+      <div class="px-6 py-4 border-b border-slate-200 flex items-center justify-between">
+        <div>
+          <h3 id="modal-edit-title" class="text-base font-bold text-slate-900">Modifica Sondaggio</h3>
+          <p id="modal-edit-id" class="text-xs text-slate-500 font-mono">ID: SURV_123456</p>
+        </div>
+        <button onclick="closeEditSurveyModal()" class="w-8 h-8 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-600 flex items-center justify-center transition">
+          <i class="fas fa-times text-sm"></i>
+        </button>
+      </div>
+
+      <form id="form-edit-survey" onsubmit="submitEditSurvey(event)" class="p-6 overflow-y-auto space-y-4">
+        <input type="hidden" id="edit-survey-id">
+
+        <div>
+          <label class="block text-xs font-semibold text-slate-700 mb-1">Titolo Sondaggio / Periodo *</label>
+          <input 
+            type="text" 
+            id="edit-survey-title" 
+            required 
+            class="w-full px-3.5 py-2 text-xs rounded-xl border border-slate-300 focus:ring-2 focus:ring-brand-500 outline-none"
+          >
+        </div>
+
+        <div>
+          <label class="block text-xs font-semibold text-slate-700 mb-1">Descrizione / Note per i soci</label>
+          <textarea 
+            id="edit-survey-desc" 
+            rows="2" 
+            class="w-full px-3.5 py-2 text-xs rounded-xl border border-slate-300 focus:ring-2 focus:ring-brand-500 outline-none"
+          ></textarea>
+        </div>
+
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div>
+            <label class="block text-xs font-semibold text-slate-700 mb-1">Stato</label>
+            <select id="edit-survey-status" class="w-full px-3.5 py-2 text-xs rounded-xl border border-slate-300 focus:ring-2 focus:ring-brand-500 outline-none">
+              <option value="ATTIVO">ATTIVO</option>
+              <option value="DISATTIVATO">DISATTIVATO</option>
+            </select>
+          </div>
+          <div>
+            <label class="block text-xs font-semibold text-slate-700 mb-1">Autore / Pubblicato Da</label>
+            <input type="text" id="edit-survey-creator" disabled class="w-full px-3.5 py-2 text-xs rounded-xl border border-slate-200 bg-slate-50 text-slate-500 outline-none">
+          </div>
+        </div>
+
+        <!-- Sezione Date -->
+        <div class="pt-3 border-t border-slate-200">
+          <div class="flex items-center justify-between mb-3">
+            <h4 class="text-xs font-bold text-slate-800 uppercase tracking-wider flex items-center gap-1.5">
+              <i class="fas fa-calendar-days text-brand-600"></i> Date Configurate (<span id="edit-dates-count">0</span>)
+            </h4>
+            <button 
+              type="button" 
+              onclick="addEditDateRow()" 
+              class="px-2.5 py-1 text-xs font-semibold text-brand-600 bg-brand-50 hover:bg-brand-100 rounded-lg transition flex items-center gap-1"
+            >
+              <i class="fas fa-plus text-[10px]"></i> Aggiungi Data
+            </button>
+          </div>
+
+          <div id="edit-dates-list" class="space-y-3">
+            <!-- Righe date generate via JS -->
+          </div>
+        </div>
+
+        <div class="pt-4 border-t border-slate-200 flex items-center justify-end gap-2">
+          <button 
+            type="button" 
+            onclick="closeEditSurveyModal()" 
+            class="px-4 py-2 bg-slate-200 hover:bg-slate-300 text-slate-700 text-xs font-semibold rounded-xl transition"
+          >
+            Annulla
+          </button>
+          <button 
+            type="submit" 
+            id="btn-save-edit-survey" 
+            class="px-5 py-2 bg-brand-600 hover:bg-brand-700 text-white text-xs font-semibold rounded-xl shadow-md shadow-brand-500/20 transition flex items-center gap-1.5"
+          >
+            <i class="fas fa-save text-xs"></i>
+            <span>Salva Modifiche</span>
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- ================= MODALE CONFIGURAZIONE 2FA / AUTHENTICATOR ================= -->
+  <div id="modal-mfa-setup" class="hidden fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
+    <div class="bg-white rounded-2xl shadow-2xl max-w-md w-full flex flex-col border border-slate-200 fade-in">
+      <div class="px-6 py-4 border-b border-slate-200 flex items-center justify-between">
+        <div class="flex items-center gap-2.5">
+          <div class="w-8 h-8 rounded-lg bg-brand-50 text-brand-600 flex items-center justify-center text-sm font-bold border border-brand-100">
+            <i class="fas fa-shield-halved"></i>
+          </div>
+          <div>
+            <h3 class="text-base font-bold text-slate-900 leading-tight">Configura App Authenticator (2FA)</h3>
+            <p class="text-[11px] text-slate-500">Google Authenticator, Microsoft Authenticator o 1Password</p>
+          </div>
+        </div>
+        <button onclick="closeMfaSetupModal()" class="w-8 h-8 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-600 flex items-center justify-center transition">
+          <i class="fas fa-times text-sm"></i>
+        </button>
+      </div>
+
+      <div class="p-6 space-y-4">
+        <!-- Passaggio 1: QR Code -->
+        <div class="text-center">
+          <span class="text-xs font-bold text-slate-700 block mb-1">Passo 1: Inquadra il QR Code con l'app</span>
+          <p class="text-[11px] text-slate-400 mb-3">Apri l'app Authenticator sul tuo smartphone e inquadra:</p>
+          <div class="inline-block p-2 bg-white rounded-2xl border-2 border-dashed border-slate-200 shadow-sm">
+            <img id="mfa-qr-img" class="w-44 h-44 rounded-xl mx-auto" alt="QR Code MFA" src="">
+          </div>
+        </div>
+
+        <!-- Chiave Manuale alternativa -->
+        <div class="bg-slate-50 p-3 rounded-xl border border-slate-200">
+          <div class="flex items-center justify-between text-[11px] text-slate-600 mb-1">
+            <span class="font-semibold">Oppure inserisci la chiave manualmente:</span>
+            <button type="button" onclick="copyMfaSecret()" class="text-brand-600 hover:text-brand-800 font-bold flex items-center gap-1 text-[10px]">
+              <i class="fas fa-copy"></i> Copia
+            </button>
+          </div>
+          <code id="mfa-secret-text" class="text-xs font-mono font-bold text-slate-800 tracking-wider block select-all break-all text-center bg-white px-2 py-1.5 rounded-lg border border-slate-200"></code>
+        </div>
+
+        <!-- Passaggio 2: Conferma codice -->
+        <div class="pt-2 border-t border-slate-100">
+          <label class="block text-xs font-bold text-slate-700 mb-1 text-center">Passo 2: Inserisci il codice a 6 cifre mostrato sull'app</label>
+          <input 
+            type="text" 
+            id="mfa-setup-code" 
+            maxlength="6" 
+            inputmode="numeric" 
+            pattern="[0-9]*" 
+            placeholder="123456" 
+            class="w-full text-center tracking-widest font-mono text-lg font-bold px-3 py-2.5 rounded-xl border border-slate-300 focus:ring-2 focus:ring-brand-500 outline-none"
+          >
+        </div>
+      </div>
+
+      <div class="px-6 py-3.5 bg-slate-50 border-t border-slate-200 rounded-b-2xl flex items-center justify-between">
+        <button 
+          type="button"
+          id="btn-disable-mfa" 
+          onclick="disableMfa()" 
+          class="hidden px-3 py-1.5 text-rose-600 hover:bg-rose-50 text-xs font-semibold rounded-lg transition"
+        >
+          Disattiva 2FA
+        </button>
+        <div class="flex items-center gap-2 ml-auto">
+          <button type="button" onclick="closeMfaSetupModal()" class="px-3.5 py-2 bg-slate-200 hover:bg-slate-300 text-slate-700 text-xs font-semibold rounded-xl transition">
+            Annulla
+          </button>
+          <button 
+            type="button"
+            id="btn-confirm-mfa" 
+            onclick="confirmMfaSetup()" 
+            class="px-4 py-2 bg-brand-600 hover:bg-brand-700 text-white text-xs font-semibold rounded-xl shadow-md shadow-brand-500/20 transition flex items-center gap-1.5"
+          >
+            <i class="fas fa-check"></i>
+            <span>Verifica & Attiva 2FA</span>
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <!-- ================= LOGICA APPLICATIVA JAVASCRIPT ================= -->
   <script>
     let currentToken = sessionStorage.getItem("ohel_admin_token") || "";
     let cachedUsers = [];
     let cachedSurveys = [];
+    let cachedLogs = [];
 
     window.addEventListener("DOMContentLoaded", () => {
       if (currentToken) {
@@ -300,8 +588,19 @@ def get_admin_html() -> str:
         loadDashboardData();
       } else {
         showLogin();
+        checkMfaInitialStatus();
       }
     });
+
+    async function checkMfaInitialStatus() {
+      try {
+        const res = await fetch("/api/admin/mfa/status");
+        const data = await res.json();
+        if (data.status === "success" && data.mfaConfigured) {
+          document.getElementById("mfa-field-group").classList.remove("hidden");
+        }
+      } catch (e) {}
+    }
 
     function togglePasswordVis() {
       const inp = document.getElementById("input-password");
@@ -345,8 +644,10 @@ def get_admin_html() -> str:
     async function handleLogin(e) {
       e.preventDefault();
       const pwd = document.getElementById("input-password").value;
+      const otp = (document.getElementById("input-otp").value || "").trim();
       const btn = document.getElementById("btn-login");
       const errBox = document.getElementById("login-error");
+      const mfaGroup = document.getElementById("mfa-field-group");
 
       btn.disabled = true;
       btn.innerHTML = `<i class="fas fa-spinner fa-spin"></i><span>Verifica in corso...</span>`;
@@ -356,26 +657,42 @@ def get_admin_html() -> str:
         const res = await fetch("/api/admin/login", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ password: pwd })
+          body: JSON.stringify({ password: pwd, otpCode: otp })
         });
         const data = await res.json();
+
+        if (data.status === "mfa_required") {
+          mfaGroup.classList.remove("hidden");
+          const otpInput = document.getElementById("input-otp");
+          otpInput.required = true;
+          otpInput.focus();
+          btn.innerHTML = `<span>Conferma Codice & Accedi</span><i class="fas fa-shield-halved text-xs"></i>`;
+          showToast("Inserisci il codice temporaneo a 6 cifre dall'App Authenticator", false);
+          return;
+        }
 
         if (data.status === "success" && data.token) {
           currentToken = data.token;
           sessionStorage.setItem("ohel_admin_token", currentToken);
           showToast("Autenticazione riuscita!");
+          mfaGroup.classList.add("hidden");
+          document.getElementById("input-otp").value = "";
           showDashboard();
           loadDashboardData();
         } else {
           errBox.classList.remove("hidden");
-          document.getElementById("login-error-text").innerText = data.message || "Password errata.";
+          document.getElementById("login-error-text").innerText = data.message || "Credenziali errate.";
         }
       } catch (err) {
         errBox.classList.remove("hidden");
         document.getElementById("login-error-text").innerText = "Errore di connessione al server.";
       } finally {
         btn.disabled = false;
-        btn.innerHTML = `<span>Accedi al Database</span><i class="fas fa-arrow-right text-xs"></i>`;
+        if (!document.getElementById("mfa-field-group").classList.contains("hidden")) {
+          btn.innerHTML = `<span>Conferma Codice & Accedi</span><i class="fas fa-shield-halved text-xs"></i>`;
+        } else {
+          btn.innerHTML = `<span>Accedi al Database</span><i class="fas fa-arrow-right text-xs"></i>`;
+        }
       }
     }
 
@@ -407,18 +724,29 @@ def get_admin_html() -> str:
         if (data.status === "success") {
           cachedUsers = data.users || [];
           cachedSurveys = data.surveys || [];
+          cachedLogs = data.logs || [];
 
           // Aggiorna statistiche
           document.getElementById("stat-total-users").innerText = data.stats.totalUsers;
           document.getElementById("stat-admin-users").innerText = data.stats.adminUsers;
           document.getElementById("stat-active-surveys").innerText = data.stats.activeSurveys;
           document.getElementById("stat-total-votes").innerText = data.stats.totalVotes;
+          const statTotalLogsEl = document.getElementById("stat-total-logs");
+          if (statTotalLogsEl) {
+            statTotalLogsEl.innerText = data.stats.totalLogs !== undefined ? data.stats.totalLogs : cachedLogs.length;
+          }
 
           document.getElementById("badge-users-count").innerText = cachedUsers.length;
           document.getElementById("badge-surveys-count").innerText = cachedSurveys.length;
+          document.getElementById("badge-logs-count").innerText = data.stats.totalLogs !== undefined ? data.stats.totalLogs : cachedLogs.length;
 
           renderUsers(cachedUsers);
           renderSurveys();
+          renderLogs(cachedLogs);
+
+          if (data.mfa) {
+            updateMfaBadge(data.mfa.active, data.mfa.enforcedByEnv);
+          }
         }
       } catch (err) {
         showToast("Impossibile caricare i dati della dashboard", true);
@@ -428,19 +756,148 @@ def get_admin_html() -> str:
     function switchTab(tab) {
       const uBtn = document.getElementById("tab-btn-users");
       const sBtn = document.getElementById("tab-btn-surveys");
+      const lBtn = document.getElementById("tab-btn-logs");
       const uContent = document.getElementById("tab-content-users");
       const sContent = document.getElementById("tab-content-surveys");
+      const lContent = document.getElementById("tab-content-logs");
+
+      [uBtn, sBtn, lBtn].forEach(b => {
+        if (b) b.className = "px-5 py-3 text-sm font-semibold border-b-2 border-transparent text-slate-500 hover:text-slate-800 transition flex items-center gap-2";
+      });
+      [uContent, sContent, lContent].forEach(c => {
+        if (c) c.classList.add("hidden");
+      });
 
       if (tab === "users") {
         uBtn.className = "px-5 py-3 text-sm font-semibold border-b-2 border-brand-600 text-brand-600 transition flex items-center gap-2";
-        sBtn.className = "px-5 py-3 text-sm font-semibold border-b-2 border-transparent text-slate-500 hover:text-slate-800 transition flex items-center gap-2";
         uContent.classList.remove("hidden");
-        sContent.classList.add("hidden");
-      } else {
+      } else if (tab === "surveys") {
         sBtn.className = "px-5 py-3 text-sm font-semibold border-b-2 border-brand-600 text-brand-600 transition flex items-center gap-2";
-        uBtn.className = "px-5 py-3 text-sm font-semibold border-b-2 border-transparent text-slate-500 hover:text-slate-800 transition flex items-center gap-2";
         sContent.classList.remove("hidden");
-        uContent.classList.add("hidden");
+      } else if (tab === "logs") {
+        lBtn.className = "px-5 py-3 text-sm font-semibold border-b-2 border-brand-600 text-brand-600 transition flex items-center gap-2";
+        lContent.classList.remove("hidden");
+        if (!cachedLogs || !cachedLogs.length) {
+          fetchLogs();
+        }
+      }
+    }
+
+    function renderLogs(logs) {
+      const tbody = document.getElementById("logs-table-body");
+      const empty = document.getElementById("logs-empty");
+      const counter = document.getElementById("logs-counter");
+      tbody.innerHTML = "";
+
+      if (!logs || !logs.length) {
+        empty.classList.remove("hidden");
+        if (counter) counter.innerText = "Nessun log trovato";
+        return;
+      }
+      empty.classList.add("hidden");
+      if (counter) counter.innerText = `Visualizzati ${logs.length} log (ultimi 30 giorni)`;
+
+      logs.forEach(lg => {
+        const tr = document.createElement("tr");
+        tr.className = "hover:bg-slate-50/70 transition";
+
+        // Sorgente
+        const isFrontend = (lg.source || "").toLowerCase() === "frontend";
+        const sourceBadge = isFrontend
+          ? `<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold bg-sky-50 text-sky-700 border border-sky-200"><i class="fas fa-globe text-[9px]"></i>Frontend</span>`
+          : `<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold bg-slate-100 text-slate-700 border border-slate-200"><i class="fas fa-server text-[9px]"></i>Backend</span>`;
+
+        // Livello
+        const lvl = (lg.level || "INFO").toUpperCase();
+        let lvlBadge = `<span class="px-2 py-0.5 rounded text-[10px] font-bold bg-blue-50 text-blue-700 border border-blue-200">${lvl}</span>`;
+        if (lvl === "SUCCESS") {
+          lvlBadge = `<span class="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">SUCCESS</span>`;
+        } else if (lvl === "WARNING") {
+          lvlBadge = `<span class="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-50 text-amber-700 border border-amber-200">WARN</span>`;
+        } else if (lvl === "ERROR") {
+          lvlBadge = `<span class="px-2 py-0.5 rounded text-[10px] font-bold bg-rose-50 text-rose-700 border border-rose-200">ERROR</span>`;
+        }
+
+        // Utente / IP
+        const userDisplay = lg.userName ? `${lg.userName} <span class="text-slate-400">(${lg.userEmail})</span>` : lg.userEmail;
+        const ipDisplay = lg.ip ? `<span class="text-[10px] font-mono text-slate-400 block">${lg.ip}</span>` : "";
+
+        tr.innerHTML = `
+          <td class="px-4 py-3 whitespace-nowrap font-mono text-slate-600">${lg.timestamp || ""}</td>
+          <td class="px-4 py-3 whitespace-nowrap">${sourceBadge}</td>
+          <td class="px-4 py-3 whitespace-nowrap">${lvlBadge}</td>
+          <td class="px-4 py-3 whitespace-nowrap"><code class="px-1.5 py-0.5 bg-slate-100 rounded text-slate-800 font-mono text-[11px] font-semibold">${lg.action || ""}</code></td>
+          <td class="px-4 py-3 whitespace-nowrap">
+            <span class="font-medium text-slate-800 block">${userDisplay}</span>
+            ${ipDisplay}
+          </td>
+          <td class="px-4 py-3 text-slate-700 max-w-md break-words">${lg.description || ""}</td>
+        `;
+        tbody.appendChild(tr);
+      });
+    }
+
+    function filterLogs() {
+      const q = (document.getElementById("search-logs").value || "").toLowerCase().trim();
+      const source = (document.getElementById("filter-logs-source").value || "ALL").toLowerCase();
+      const level = (document.getElementById("filter-logs-level").value || "ALL").toUpperCase();
+
+      const filtered = cachedLogs.filter(lg => {
+        if (source !== "all" && (lg.source || "").toLowerCase() !== source) return false;
+        if (level !== "ALL" && (lg.level || "INFO").toUpperCase() !== level) return false;
+        if (q) {
+          const match = (lg.description || "").toLowerCase().includes(q)
+            || (lg.action || "").toLowerCase().includes(q)
+            || (lg.userEmail || "").toLowerCase().includes(q)
+            || (lg.userName || "").toLowerCase().includes(q)
+            || (lg.ip || "").toLowerCase().includes(q);
+          if (!match) return false;
+        }
+        return true;
+      });
+
+      renderLogs(filtered);
+    }
+
+    async function fetchLogs() {
+      try {
+        const res = await fetch("/api/admin/logs?limit=300", {
+          headers: { "Authorization": `Bearer ${currentToken}` }
+        });
+        const data = await res.json();
+        if (data.status === "success" && Array.isArray(data.logs)) {
+          cachedLogs = data.logs;
+          document.getElementById("badge-logs-count").innerText = data.total !== undefined ? data.total : cachedLogs.length;
+          filterLogs();
+          showToast("Log aggiornati con successo!");
+        } else {
+          showToast(data.message || "Impossibile recuperare i log", true);
+        }
+      } catch (err) {
+        showToast("Errore di rete nel recupero dei log", true);
+      }
+    }
+
+    async function clearAllLogs() {
+      if (!confirm("ATTENZIONE: Sei sicuro di voler eliminare definitivamente tutti i log registrati nel database? L'operazione non può essere annullata.")) {
+        return;
+      }
+      try {
+        const res = await fetch("/api/admin/logs/clear", {
+          method: "POST",
+          headers: { "Authorization": `Bearer ${currentToken}` }
+        });
+        const data = await res.json();
+        if (data.status === "success") {
+          showToast(data.message || "Log eliminati con successo!");
+          cachedLogs = [];
+          document.getElementById("badge-logs-count").innerText = "0";
+          renderLogs([]);
+        } else {
+          showToast(data.message || "Errore nella cancellazione dei log", true);
+        }
+      } catch (err) {
+        showToast("Errore di rete durante l'eliminazione dei log", true);
       }
     }
 
@@ -471,7 +928,6 @@ def get_admin_html() -> str:
               ${avatarHtml}
               <div>
                 <span class="font-bold text-slate-900 block text-sm">${u.nome} ${u.cognome}</span>
-                <span class="text-[11px] text-slate-400 font-mono">${u.idGoogle || ""}</span>
               </div>
             </div>
           </td>
@@ -606,24 +1062,36 @@ def get_admin_html() -> str:
             <h3 class="text-base font-bold text-slate-900 leading-snug">${s.title}</h3>
             <p class="text-xs text-slate-500 mt-1 line-clamp-2">${s.description || "Nessuna descrizione specificata."}</p>
             
-            <div class="mt-4 flex flex-wrap gap-2 text-[11px] text-slate-600">
+            <div class="mt-4 flex flex-wrap items-center gap-2 text-[11px] text-slate-600">
               <span class="bg-slate-50 border border-slate-200 px-2.5 py-1 rounded-lg flex items-center gap-1.5">
                 <i class="fas fa-calendar-days text-slate-400"></i> ${datesCount} date configurate
               </span>
               <span class="bg-purple-50 text-purple-700 border border-purple-200/60 px-2.5 py-1 rounded-lg font-semibold flex items-center gap-1.5">
                 <i class="fas fa-user-check text-purple-500"></i> ${votesCount} partecipanti
               </span>
+              <span class="bg-emerald-50 text-emerald-700 border border-emerald-200/60 px-2.5 py-1 rounded-lg font-medium flex items-center gap-1.5">
+                <i class="fas fa-user-pen text-emerald-600"></i> ${s.createdByName || s.createdBy || 'Sistema'}
+              </span>
             </div>
           </div>
 
-          <div class="pt-4 border-t border-slate-100 flex items-center justify-between gap-2">
-            <button 
-              onclick="viewSurveyVotes('${s.idSondaggio}', '${s.title.replace(/'/g, "\\'")}')" 
-              class="px-3.5 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold rounded-xl transition flex items-center gap-1.5"
-            >
-              <i class="fas fa-eye text-slate-500"></i>
-              <span>Vedi Voti (${votesCount})</span>
-            </button>
+          <div class="pt-4 border-t border-slate-100 flex items-center justify-between gap-2 flex-wrap">
+            <div class="flex items-center gap-2">
+              <button 
+                onclick="viewSurveyVotes('${s.idSondaggio}', '${s.title.replace(/'/g, "\\'")}')" 
+                class="px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold rounded-xl transition flex items-center gap-1.5"
+              >
+                <i class="fas fa-eye text-slate-500"></i>
+                <span>Voti (${votesCount})</span>
+              </button>
+              <button 
+                onclick="openEditSurveyModal('${s.idSondaggio}')" 
+                class="px-3 py-2 bg-brand-50 hover:bg-brand-100 text-brand-700 text-xs font-semibold rounded-xl border border-brand-200/70 transition flex items-center gap-1.5"
+              >
+                <i class="fas fa-pen-to-square text-brand-600"></i>
+                <span>Modifica</span>
+              </button>
+            </div>
 
             <div class="flex items-center gap-2">
               <button 
@@ -775,6 +1243,296 @@ def get_admin_html() -> str:
 
     function closeVotesModal() {
       document.getElementById("modal-votes").classList.add("hidden");
+    }
+
+    let editingDates = [];
+
+    function openEditSurveyModal(idSondaggio) {
+      const s = cachedSurveys.find(x => x.idSondaggio === idSondaggio);
+      if (!s) return;
+
+      document.getElementById("edit-survey-id").value = s.idSondaggio;
+      document.getElementById("modal-edit-id").innerText = "ID: " + s.idSondaggio;
+      document.getElementById("edit-survey-title").value = s.title || "";
+      document.getElementById("edit-survey-desc").value = s.description || "";
+      document.getElementById("edit-survey-status").value = s.status || "ATTIVO";
+      document.getElementById("edit-survey-creator").value = s.createdByName ? `${s.createdByName} (${s.createdBy || ''})` : (s.createdBy || 'Sistema');
+
+      editingDates = (s.dates || []).map(d => ({
+        date: d.date || "",
+        startTime: (d.timeRange && d.timeRange.start) || "08:00",
+        endTime: (d.timeRange && d.timeRange.end) || "20:00",
+        subtitle: d.subtitle || "",
+        timeSlots: Array.isArray(d.timeSlots) ? d.timeSlots.join(", ") : (d.timeSlots || ""),
+        notes: d.notes || ""
+      }));
+
+      renderEditDates();
+      document.getElementById("modal-edit-survey").classList.remove("hidden");
+    }
+
+    function closeEditSurveyModal() {
+      document.getElementById("modal-edit-survey").classList.add("hidden");
+    }
+
+    function renderEditDates() {
+      const container = document.getElementById("edit-dates-list");
+      document.getElementById("edit-dates-count").innerText = editingDates.length;
+      container.innerHTML = "";
+
+      if (!editingDates.length) {
+        container.innerHTML = `<div class="p-4 bg-slate-50 border border-dashed border-slate-200 rounded-xl text-center text-xs text-slate-400">Nessuna data impostata. Clicca su "+ Aggiungi Data" per inserirne una.</div>`;
+        return;
+      }
+
+      editingDates.forEach((d, idx) => {
+        const row = document.createElement("div");
+        row.className = "p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-2 relative";
+        row.innerHTML = `
+          <div class="flex items-center justify-between">
+            <span class="text-[11px] font-bold text-slate-700">Opzione Data #${idx + 1}</span>
+            <button type="button" onclick="removeEditDateRow(${idx})" class="text-rose-500 hover:text-rose-700 text-xs px-2 py-0.5 rounded hover:bg-rose-50 transition">
+              <i class="fas fa-trash-can mr-1"></i> Rimuovi
+            </button>
+          </div>
+          <div class="grid grid-cols-1 sm:grid-cols-3 gap-2">
+            <div>
+              <label class="block text-[10px] uppercase font-semibold text-slate-500 mb-0.5">Data</label>
+              <input type="date" value="${d.date}" onchange="updateEditDate(${idx}, 'date', this.value)" class="w-full px-2.5 py-1.5 text-xs rounded-lg border border-slate-300 outline-none focus:ring-1 focus:ring-brand-500">
+            </div>
+            <div>
+              <label class="block text-[10px] uppercase font-semibold text-slate-500 mb-0.5">Orario Inizio</label>
+              <input type="time" value="${d.startTime}" onchange="updateEditDate(${idx}, 'startTime', this.value)" class="w-full px-2.5 py-1.5 text-xs rounded-lg border border-slate-300 outline-none focus:ring-1 focus:ring-brand-500">
+            </div>
+            <div>
+              <label class="block text-[10px] uppercase font-semibold text-slate-500 mb-0.5">Orario Fine</label>
+              <input type="time" value="${d.endTime}" onchange="updateEditDate(${idx}, 'endTime', this.value)" class="w-full px-2.5 py-1.5 text-xs rounded-lg border border-slate-300 outline-none focus:ring-1 focus:ring-brand-500">
+            </div>
+          </div>
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
+            <div>
+              <label class="block text-[10px] uppercase font-semibold text-slate-500 mb-0.5">Sottotitolo (opzionale)</label>
+              <input type="text" placeholder="es. Mattina pulizie" value="${d.subtitle || ''}" oninput="updateEditDate(${idx}, 'subtitle', this.value)" class="w-full px-2.5 py-1.5 text-xs rounded-lg border border-slate-300 outline-none focus:ring-1 focus:ring-brand-500">
+            </div>
+            <div>
+              <label class="block text-[10px] uppercase font-semibold text-slate-500 mb-0.5">Fasce Orarie (separate da virgola)</label>
+              <input type="text" placeholder="es. Mattina, Pomeriggio, Sera" value="${d.timeSlots || ''}" oninput="updateEditDate(${idx}, 'timeSlots', this.value)" class="w-full px-2.5 py-1.5 text-xs rounded-lg border border-slate-300 outline-none focus:ring-1 focus:ring-brand-500">
+            </div>
+          </div>
+          <div>
+            <label class="block text-[10px] uppercase font-semibold text-slate-500 mb-0.5">Note Specifiche (opzionali)</label>
+            <input type="text" placeholder="es. Si richiede puntualità" value="${d.notes || ''}" oninput="updateEditDate(${idx}, 'notes', this.value)" class="w-full px-2.5 py-1.5 text-xs rounded-lg border border-slate-300 outline-none focus:ring-1 focus:ring-brand-500">
+          </div>
+        `;
+        container.appendChild(row);
+      });
+    }
+
+    function addEditDateRow() {
+      editingDates.push({
+        date: "",
+        startTime: "08:00",
+        endTime: "20:00",
+        subtitle: "",
+        timeSlots: "Mattina, Pomeriggio, Sera",
+        notes: ""
+      });
+      renderEditDates();
+    }
+
+    function removeEditDateRow(idx) {
+      if (editingDates.length <= 1) {
+        if (!confirm("Rimuovere questa data configurata?")) return;
+      }
+      editingDates.splice(idx, 1);
+      renderEditDates();
+    }
+
+    function updateEditDate(idx, key, val) {
+      if (editingDates[idx]) {
+        editingDates[idx][key] = val;
+      }
+    }
+
+    async function submitEditSurvey(e) {
+      e.preventDefault();
+      const idSondaggio = document.getElementById("edit-survey-id").value;
+      const title = document.getElementById("edit-survey-title").value.trim();
+      const description = document.getElementById("edit-survey-desc").value.trim();
+      const status = document.getElementById("edit-survey-status").value;
+      const btn = document.getElementById("btn-save-edit-survey");
+
+      if (!title) {
+        showToast("Il titolo è obbligatorio", true);
+        return;
+      }
+
+      const formattedDates = editingDates.map(d => ({
+        date: d.date,
+        timeRange: { start: d.startTime, end: d.endTime },
+        subtitle: d.subtitle || "",
+        timeSlots: d.timeSlots ? d.timeSlots.split(",").map(x => x.trim()).filter(Boolean) : [],
+        notes: d.notes || ""
+      }));
+
+      btn.disabled = true;
+      btn.innerHTML = `<i class="fas fa-spinner fa-spin"></i><span>Salvataggio...</span>`;
+
+      try {
+        const res = await fetch("/api/admin/surveys/update", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${currentToken}`
+          },
+          body: JSON.stringify({
+            idSondaggio: idSondaggio,
+            title: title,
+            description: description,
+            status: status,
+            dates: formattedDates
+          })
+        });
+
+        const data = await res.json();
+        if (data.status === "success") {
+          showToast("Sondaggio modificato con successo!");
+          closeEditSurveyModal();
+          loadDashboardData();
+        } else {
+          showToast(data.message || "Errore durante il salvataggio", true);
+        }
+      } catch (err) {
+        showToast("Errore di connessione", true);
+      } finally {
+        btn.disabled = false;
+        btn.innerHTML = `<i class="fas fa-save text-xs"></i><span>Salva Modifiche</span>`;
+      }
+    }
+
+    let currentMfaSetupSecret = "";
+    let isCurrentMfaActive = false;
+
+    function updateMfaBadge(active, byEnv) {
+      isCurrentMfaActive = active;
+      const btn = document.getElementById("btn-mfa-badge");
+      const icon = document.getElementById("mfa-badge-icon");
+      const txt = document.getElementById("mfa-badge-text");
+
+      if (active) {
+        btn.className = "px-3 py-2 text-xs font-semibold rounded-lg transition flex items-center gap-1.5 bg-emerald-50 text-emerald-700 border border-emerald-200/70 hover:bg-emerald-100";
+        icon.className = "fas fa-shield-check text-emerald-600";
+        txt.innerText = byEnv ? "2FA Attiva (Env)" : "2FA Attiva";
+      } else {
+        btn.className = "px-3 py-2 text-xs font-semibold rounded-lg transition flex items-center gap-1.5 bg-amber-50 text-amber-700 border border-amber-200/70 hover:bg-amber-100 animate-pulse";
+        icon.className = "fas fa-shield-halved text-amber-600";
+        txt.innerText = "Configura 2FA";
+      }
+    }
+
+    async function openMfaSetupModal() {
+      document.getElementById("mfa-setup-code").value = "";
+      const disableBtn = document.getElementById("btn-disable-mfa");
+
+      if (isCurrentMfaActive) {
+        disableBtn.classList.remove("hidden");
+      } else {
+        disableBtn.classList.add("hidden");
+      }
+
+      try {
+        const res = await fetch("/api/admin/mfa/setup", {
+          headers: { "Authorization": `Bearer ${currentToken}` }
+        });
+        const data = await res.json();
+        if (data.status === "success") {
+          currentMfaSetupSecret = data.secret;
+          document.getElementById("mfa-secret-text").innerText = data.secret;
+          document.getElementById("mfa-qr-img").src = data.qrUrl;
+          document.getElementById("modal-mfa-setup").classList.remove("hidden");
+        } else {
+          showToast(data.message || "Errore inizializzazione 2FA", true);
+        }
+      } catch (err) {
+        showToast("Errore di rete", true);
+      }
+    }
+
+    function closeMfaSetupModal() {
+      document.getElementById("modal-mfa-setup").classList.add("hidden");
+    }
+
+    function copyMfaSecret() {
+      if (currentMfaSetupSecret) {
+        navigator.clipboard.writeText(currentMfaSetupSecret);
+        showToast("Chiave segreta copiata negli appunti!");
+      }
+    }
+
+    async function confirmMfaSetup() {
+      const code = document.getElementById("mfa-setup-code").value.trim();
+      if (!code || code.length !== 6) {
+        showToast("Inserisci il codice a 6 cifre generato dall'app", true);
+        return;
+      }
+
+      const btn = document.getElementById("btn-confirm-mfa");
+      btn.disabled = true;
+      btn.innerHTML = `<i class="fas fa-spinner fa-spin"></i><span>Verifica...</span>`;
+
+      try {
+        const res = await fetch("/api/admin/mfa/confirm-setup", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${currentToken}`
+          },
+          body: JSON.stringify({
+            secret: currentMfaSetupSecret,
+            otpCode: code
+          })
+        });
+
+        const data = await res.json();
+        if (data.status === "success") {
+          showToast("🎉 Autenticazione a due fattori attivata con successo!");
+          closeMfaSetupModal();
+          loadDashboardData();
+        } else {
+          showToast(data.message || "Codice errato", true);
+        }
+      } catch (e) {
+        showToast("Errore durante la verifica", true);
+      } finally {
+        btn.disabled = false;
+        btn.innerHTML = `<i class="fas fa-check"></i><span>Verifica & Attiva 2FA</span>`;
+      }
+    }
+
+    async function disableMfa() {
+      const code = prompt("Inserisci il codice a 6 cifre dall'App Authenticator per confermare la disattivazione:");
+      if (!code) return;
+
+      try {
+        const res = await fetch("/api/admin/mfa/disable", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${currentToken}`
+          },
+          body: JSON.stringify({ otpCode: code.trim() })
+        });
+        const data = await res.json();
+        if (data.status === "success") {
+          showToast("2FA disattivata.");
+          closeMfaSetupModal();
+          loadDashboardData();
+        } else {
+          showToast(data.message || "Codice non corretto", true);
+        }
+      } catch (e) {
+        showToast("Errore durante l'operazione", true);
+      }
     }
   </script>
 </body>

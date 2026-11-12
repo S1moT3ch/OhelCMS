@@ -10,6 +10,7 @@ import SurveyVote from "./components/SurveyVote";
 import SurveyResultsList from "./components/SurveyResultsList";
 import SurveySingleResult from "./components/SurveySingleResult";
 import SurveyManage from "./components/SurveyManage";
+import SociRegistry from "./components/SociRegistry";
 
 function App() {
     return (
@@ -73,6 +74,16 @@ function App() {
                         element={
                             <ProtectedRoute>
                                 <SurveySingleResult />
+                            </ProtectedRoute>
+                        }
+                    />
+
+                    {/* Rotta Anagrafica Soci (Riservata ai Soci Admin) */}
+                    <Route
+                        path="/soci"
+                        element={
+                            <ProtectedRoute>
+                                <SociRegistry />
                             </ProtectedRoute>
                         }
                     />

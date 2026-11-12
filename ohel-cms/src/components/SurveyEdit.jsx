@@ -1,9 +1,10 @@
 import React, { useState, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useLocation } from "react-router-dom";
 import CONFIG from "../config/config";
 import HeaderCompact from "./HeaderCompact";
 import Footer from "../components/Footer";
 import { getCache, clearAllCache, clearCachePattern } from "../utils/cacheManager";
+import { logClientEvent } from "../utils/logger";
 import MessageDialog from "./MessageDialog";
 
 // Importazioni Material-UI
@@ -31,11 +32,16 @@ import WarningAmberIcon from "@mui/icons-material/WarningAmber";
 // Palette cromatica Associazione Ohel
 const OHEL_GREEN = "#2e5b43";
 const OHEL_SAGE = "#52796f";
+const OHEL_TEAL = "#0f766e";
 const OHEL_LIGHT_GREEN = "#f4f7f5";
 const OHEL_TEXT_DARK = "#1e382b";
 
 function SurveyEdit() {
     const navigate = useNavigate();
+    const location = useLocation();
+    const surveyToEdit = location.state?.surveyToEdit || null;
+    const isEditing = Boolean(surveyToEdit);
+
     const [submitting, setSubmitting] = useState(false);
     const [confirmDialogOpen, setConfirmDialogOpen] = useState(false);
     const [existingActiveSurveys, setExistingActiveSurveys] = useState([]);
@@ -52,23 +58,47 @@ function SurveyEdit() {
         if (!storedUser || !JSON.parse(storedUser).isAdmin) {
             console.warn("Accesso negato: l'utente non è un amministratore.");
             navigate("/", { replace: true });
+            return;
         }
-    }, [navigate]);
 
-    const [title, setTitle] = useState("");
-    const [description, setDescription] = useState("");
+        const user = JSON.parse(storedUser);
+        const currentEmail = (user.email || "").toLowerCase().trim();
 
-    const [dates, setDates] = useState([
-        {
-            id: Date.now(),
-            dateValue: "",
-            startTime: "08:00",
-            endTime: "20:00",
-            subtitle: "",
-            timeSlots: "Mattina, Pomeriggio, Sera",
-            notes: ""
+        if (surveyToEdit) {
+            const surveyOwner = (surveyToEdit.createdBy || "").toLowerCase().trim();
+            if (surveyOwner && surveyOwner !== currentEmail) {
+                showDialog("Accesso Negato", "Puoi modificare solo i sondaggi pubblicati da te.", "warning", () => navigate("/surveys/manage"));
+            }
         }
-    ]);
+    }, [navigate, surveyToEdit]);
+
+    const [title, setTitle] = useState(surveyToEdit?.title || "");
+    const [description, setDescription] = useState(surveyToEdit?.description || "");
+
+    const [dates, setDates] = useState(() => {
+        if (surveyToEdit && Array.isArray(surveyToEdit.dates) && surveyToEdit.dates.length > 0) {
+            return surveyToEdit.dates.map((d, idx) => ({
+                id: Date.now() + idx,
+                dateValue: d.date || "",
+                startTime: d.timeRange?.start || "08:00",
+                endTime: d.timeRange?.end || "20:00",
+                subtitle: d.subtitle || "",
+                timeSlots: Array.isArray(d.timeSlots) ? d.timeSlots.join(", ") : (d.timeSlots || "Mattina, Pomeriggio, Sera"),
+                notes: d.notes || ""
+            }));
+        }
+        return [
+            {
+                id: Date.now(),
+                dateValue: "",
+                startTime: "08:00",
+                endTime: "20:00",
+                subtitle: "",
+                timeSlots: "Mattina, Pomeriggio, Sera",
+                notes: ""
+            }
+        ];
+    });
 
     const handleLogout = () => {
         clearAllCache();
@@ -122,6 +152,12 @@ function SurveyEdit() {
     const handleSubmit = async (e) => {
         e.preventDefault();
 
+        // Se siamo in modalità modifica, eseguiamo direttamente l'aggiornamento
+        if (isEditing) {
+            executeSurveyUpdate();
+            return;
+        }
+
         const storedUser = localStorage.getItem("userProfile");
         const email = storedUser ? JSON.parse(storedUser).email : "";
 
@@ -147,6 +183,69 @@ function SurveyEdit() {
             setConfirmDialogOpen(true);
         } else {
             executeSurveyCreation();
+        }
+    };
+
+    // Esecuzione effettiva dell'aggiornamento di un sondaggio esistente
+    const executeSurveyUpdate = async () => {
+        setSubmitting(true);
+
+        const idToken = localStorage.getItem("authToken");
+        if (!idToken) {
+            showDialog("Sessione Scaduta", "Sessione non valida o scaduta. Riapri l'applicazione.", "warning", handleLogout);
+            return;
+        }
+
+        const surveyPayload = {
+            idSondaggio: surveyToEdit.idSondaggio,
+            title,
+            description,
+            dates: dates.map(({ dateValue, startTime, endTime, subtitle, timeSlots, notes }) => ({
+                date: dateValue,
+                timeRange: { start: startTime, end: endTime },
+                subtitle,
+                timeSlots: typeof timeSlots === "string" ? timeSlots.split(",").map(slot => slot.trim()).filter(Boolean) : timeSlots,
+                notes
+            }))
+        };
+
+        try {
+            const response = await fetch(URL_APPS_SCRIPT, {
+                method: "POST",
+                mode: "cors",
+                body: JSON.stringify({
+                    action: "UPDATE_SURVEY",
+                    token: idToken,
+                    payload: surveyPayload
+                }),
+            });
+
+            if (!response.ok) {
+                throw new Error(`Errore di rete. Stato: ${response.status}`);
+            }
+
+            const data = await response.json();
+
+            if (data.status === "success") {
+                logClientEvent("CLIENT_UPDATE_SURVEY", `Sondaggio "${title}" aggiornato con successo dall'admin`, { level: "SUCCESS" });
+                clearCachePattern("surveys");
+                clearCachePattern("surveys_active");
+                clearCachePattern("surveys_manage");
+
+                showDialog(
+                    "Sondaggio Modificato",
+                    "💾 Il sondaggio è stato aggiornato con successo!",
+                    "success",
+                    () => navigate("/surveys/manage")
+                );
+            } else {
+                showDialog("Errore Modifica", "Impossibile aggiornare il sondaggio: " + (data.message || ""), "error");
+            }
+        } catch (err) {
+            console.error("[ERRORE MODIFICA SONDAGGIO]:", err);
+            showDialog("Errore di Rete", "Impossibile connettersi al server del backend. Riprova più tardi.", "error");
+        } finally {
+            setSubmitting(false);
         }
     };
 
@@ -218,6 +317,7 @@ function SurveyEdit() {
             const data = await response.json();
 
             if (data.status === "success") {
+                logClientEvent("CLIENT_UPDATE_SURVEY", `Sondaggio "${title}" aggiornato con successo dall'admin`, { level: "SUCCESS" });
                 clearCachePattern("surveys");
                 clearCachePattern("surveys_active");
                 clearCachePattern("surveys_manage");
@@ -246,19 +346,19 @@ function SurveyEdit() {
                 boxSizing: "border-box"
             }}
         >
-            <HeaderCompact subtitle="Nuovo Sondaggio" onLogout={handleLogout} />
+            <HeaderCompact subtitle={isEditing ? "Modifica Sondaggio" : "Nuovo Sondaggio"} onLogout={handleLogout} />
 
             <Container maxWidth="sm" sx={{ flexGrow: 1, display: "flex", flexDirection: "column", gap: 2, mt: 1, mb: 4 }}>
 
                 <Box display="flex" alignItems="center" justifyContent="space-between" pl={0.5}>
                     <Typography variant="h6" fontWeight="800" sx={{ color: OHEL_TEXT_DARK }}>
-                        Crea Sondaggio Presenze
+                        {isEditing ? "Modifica Sondaggio Presenze" : "Crea Sondaggio Presenze"}
                     </Typography>
                     <Button
                         variant="text"
                         size="small"
                         disabled={submitting}
-                        onClick={() => navigate("/dashboard")}
+                        onClick={() => navigate(isEditing ? "/surveys/manage" : "/dashboard")}
                         sx={{ color: OHEL_SAGE, textTransform: "none", fontWeight: 700 }}
                     >
                         Annulla
@@ -439,12 +539,14 @@ function SurveyEdit() {
                                 fontWeight: 800,
                                 fontSize: "1rem",
                                 py: 1.5,
-                                backgroundColor: OHEL_GREEN,
+                                backgroundColor: isEditing ? OHEL_TEAL : OHEL_GREEN,
                                 boxShadow: "0 4px 12px rgba(46, 91, 67, 0.2)",
-                                "&:hover": { backgroundColor: "#1e382b" }
+                                "&:hover": { backgroundColor: isEditing ? "#115e59" : "#1e382b" }
                             }}
                         >
-                            {submitting ? "Pubblicazione in corso..." : "Pubblica Sondaggio Presenze →"}
+                            {submitting
+                                ? (isEditing ? "Salvataggio in corso..." : "Pubblicazione in corso...")
+                                : (isEditing ? "Salva Modifiche al Sondaggio →" : "Pubblica Sondaggio Presenze →")}
                         </Button>
 
                     </Stack>

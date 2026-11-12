@@ -1,6 +1,7 @@
 import os
 import sys
 import json
+import urllib.parse
 from typing import Optional
 
 # Assicura che la root del backend sia nel sys.path per l'esecuzione su Vercel Serverless
@@ -20,11 +21,14 @@ from services.users_service import (
     check_admin_permissions,
     set_user_admin_status,
     delete_user,
+    get_all_soci,
 )
 from services.surveys_service import (
     get_active_surveys,
     get_all_surveys,
+    get_survey_by_id,
     create_survey,
+    update_survey,
     toggle_survey_status,
     delete_survey,
 )
@@ -34,6 +38,18 @@ from services.admin_service import (
     verify_admin_session,
     delete_admin_session,
     get_admin_dashboard_data,
+    is_mfa_configured,
+    generate_mfa_secret,
+    get_admin_mfa_secret,
+    set_admin_mfa_secret,
+    delete_admin_mfa_secret,
+    verify_totp,
+)
+from services.logs_service import (
+    add_log,
+    get_logs,
+    get_logs_count,
+    clear_all_logs
 )
 from templates.admin_page import get_admin_html
 
@@ -90,23 +106,137 @@ def _extract_admin_token(request: Request) -> Optional[str]:
     return request.headers.get("x-admin-token") or None
 
 
+def get_client_ip(request: Request) -> str:
+    """Estrae l'indirizzo IP del client, supportando proxy Vercel e reverse proxy standard."""
+    forwarded = request.headers.get("x-forwarded-for")
+    if forwarded:
+        return forwarded.split(",")[0].strip()
+    real_ip = request.headers.get("x-real-ip")
+    if real_ip:
+        return real_ip.strip()
+    if request.client:
+        return request.client.host
+    return ""
+
+
 @app.post("/api/admin/login")
 @app.post("/admin/login")
 async def admin_login(request: Request):
-    """Verifica la password configurata e rilascia il token di sessione admin."""
+    """Verifica la password configurata e l'eventuale codice OTP App Authenticator."""
     try:
         data = await request.json()
         password = data.get("password", "")
+        otp_code = data.get("otpCode") or data.get("otp_code") or ""
         r = get_redis_client()
+        ip = get_client_ip(request)
 
-        session_token = create_admin_session(r, password)
-        if not session_token:
-            return JSONResponse(
-                content={"status": "error", "message": "Password non corretta."},
-                status_code=401
-            )
+        result = create_admin_session(r, password, otp_code)
+        if not result.get("success"):
+            if result.get("status") == "mfa_required":
+                add_log(r, action="ADMIN_MFA_REQUESTED", description="Accesso admin: password corretta, richiesto codice App Authenticator", source="backend", user_email="admin@system", level="INFO", ip_address=ip)
+                return JSONResponse(content=result, status_code=200)
+            elif "OTP" in result.get("message", "") or "codice" in result.get("message", "").lower():
+                add_log(r, action="ADMIN_MFA_FAILED", description=f"Accesso admin fallito: {result.get('message')}", source="backend", user_email="admin@system", level="WARNING", ip_address=ip)
+                return JSONResponse(content=result, status_code=401)
+            else:
+                add_log(r, action="ADMIN_LOGIN_FAILED", description="Accesso admin fallito: password errata", source="backend", user_email="admin@system", level="WARNING", ip_address=ip)
+                return JSONResponse(content=result, status_code=401)
 
-        return JSONResponse(content={"status": "success", "token": session_token})
+        add_log(r, action="ADMIN_LOGIN_SUCCESS", description="Accesso amministratore di sistema effettuato al portale /admin", source="backend", user_email="admin@system", level="SUCCESS", ip_address=ip)
+        return JSONResponse(content=result)
+    except Exception as e:
+        return JSONResponse(content={"status": "error", "message": str(e)}, status_code=500)
+
+
+@app.get("/api/admin/mfa/status")
+@app.get("/admin/mfa/status")
+async def admin_mfa_status():
+    """Verifica se l'MFA è attualmente configurata per l'amministratore."""
+    try:
+        r = get_redis_client()
+        configured = is_mfa_configured(r)
+        return JSONResponse(content={"status": "success", "mfaConfigured": configured})
+    except Exception as e:
+        return JSONResponse(content={"status": "error", "message": str(e)}, status_code=500)
+
+
+@app.get("/api/admin/mfa/setup")
+@app.get("/admin/mfa/setup")
+async def admin_mfa_setup(request: Request):
+    """Genera un nuovo segreto Base32 temporaneo e l'URI otpauth per la scansione QR."""
+    try:
+        r = get_redis_client()
+        token = _extract_admin_token(request)
+        if not verify_admin_session(r, token):
+            return JSONResponse(content={"status": "unauthorized", "message": "Sessione non valida."}, status_code=401)
+
+        secret = generate_mfa_secret()
+        otpauth_url = f"otpauth://totp/OhelCMS:Admin?secret={secret}&issuer=OhelCMS"
+        qr_url = f"https://api.qrserver.com/v1/create-qr-code/?size=220x220&data={urllib.parse.quote(otpauth_url)}"
+
+        return JSONResponse(content={
+            "status": "success",
+            "secret": secret,
+            "otpauth": otpauth_url,
+            "qrUrl": qr_url
+        })
+    except Exception as e:
+        return JSONResponse(content={"status": "error", "message": str(e)}, status_code=500)
+
+
+@app.post("/api/admin/mfa/confirm-setup")
+@app.post("/admin/mfa/confirm-setup")
+async def admin_mfa_confirm_setup(request: Request):
+    """Verifica il codice OTP e attiva definitivamente la MFA con App Authenticator."""
+    try:
+        r = get_redis_client()
+        token = _extract_admin_token(request)
+        if not verify_admin_session(r, token):
+            return JSONResponse(content={"status": "unauthorized", "message": "Sessione non valida."}, status_code=401)
+
+        payload = await request.json()
+        secret = payload.get("secret", "").strip().replace(" ", "").upper()
+        otp_code = str(payload.get("otpCode", "")).strip()
+
+        if not secret or not otp_code:
+            return JSONResponse(content={"status": "error", "message": "Dati secret o codice OTP mancanti."}, status_code=400)
+
+        if not verify_totp(otp_code, secret):
+            return JSONResponse(content={"status": "error", "message": "Codice OTP non corretto. Verifica l'orario del telefono e riprova."}, status_code=400)
+
+        set_admin_mfa_secret(r, secret)
+        add_log(r, action="ADMIN_MFA_ENABLED", description="MFA con App Authenticator configurata e attivata con successo", source="backend", user_email="admin@system", level="SUCCESS", ip_address=get_client_ip(request))
+        return JSONResponse(content={
+            "status": "success",
+            "message": "Autenticazione a due fattori con App Authenticator attivata con successo!"
+        })
+    except Exception as e:
+        return JSONResponse(content={"status": "error", "message": str(e)}, status_code=500)
+
+
+@app.post("/api/admin/mfa/disable")
+@app.post("/admin/mfa/disable")
+async def admin_mfa_disable(request: Request):
+    """Disattiva l'MFA in Redis previa conferma del codice OTP corrente."""
+    try:
+        r = get_redis_client()
+        token = _extract_admin_token(request)
+        if not verify_admin_session(r, token):
+            return JSONResponse(content={"status": "unauthorized", "message": "Sessione non valida."}, status_code=401)
+
+        payload = await request.json()
+        otp_code = str(payload.get("otpCode", "")).strip()
+        secret = get_admin_mfa_secret(r)
+
+        if not secret:
+            return JSONResponse(content={"status": "error", "message": "MFA non configurata."}, status_code=400)
+
+        if not verify_totp(otp_code, secret):
+            return JSONResponse(content={"status": "error", "message": "Codice OTP errato. Impossibile disattivare la 2FA."}, status_code=400)
+
+        delete_admin_mfa_secret(r)
+        add_log(r, action="ADMIN_MFA_DISABLED", description="MFA App Authenticator disattivata dall'amministratore", source="backend", user_email="admin@system", level="WARNING", ip_address=get_client_ip(request))
+        return JSONResponse(content={"status": "success", "message": "MFA disattivata con successo."})
     except Exception as e:
         return JSONResponse(content={"status": "error", "message": str(e)}, status_code=500)
 
@@ -161,6 +291,7 @@ async def admin_toggle_user_admin(request: Request):
             return JSONResponse(content={"status": "error", "message": "Email obbligatoria."}, status_code=400)
 
         res = set_user_admin_status(r, email, is_admin)
+        add_log(r, action="ADMIN_ROLE_CHANGE", description=f"Ruolo amministratore {'assegnato a' if is_admin else 'revocato da'} {email}", source="backend", user_email="admin@system", level="INFO", ip_address=get_client_ip(request))
         return JSONResponse(content=res)
     except Exception as e:
         return JSONResponse(content={"status": "error", "message": str(e)}, status_code=500)
@@ -182,6 +313,7 @@ async def admin_delete_user(request: Request):
             return JSONResponse(content={"status": "error", "message": "Email obbligatoria."}, status_code=400)
 
         res = delete_user(r, email)
+        add_log(r, action="ADMIN_DELETE_USER", description=f"Socio {email} eliminato definitivamente dal database", source="backend", user_email="admin@system", level="WARNING", ip_address=get_client_ip(request))
         return JSONResponse(content=res)
     except Exception as e:
         return JSONResponse(content={"status": "error", "message": str(e)}, status_code=500)
@@ -218,6 +350,29 @@ async def admin_toggle_survey(request: Request):
         new_status = payload.get("newStatus")
 
         res = toggle_survey_status(r, id_sondaggio, new_status)
+        add_log(r, action="ADMIN_SURVEY_TOGGLE", description=f"Stato sondaggio '{id_sondaggio}' impostato su '{new_status}' dal pannello admin", source="backend", user_email="admin@system", level="INFO", ip_address=get_client_ip(request))
+        return JSONResponse(content=res)
+    except Exception as e:
+        return JSONResponse(content={"status": "error", "message": str(e)}, status_code=500)
+
+
+@app.post("/api/admin/surveys/update")
+@app.post("/admin/surveys/update")
+async def admin_update_survey(request: Request):
+    """Modifica il contenuto, il titolo, la descrizione e le date di un sondaggio dal pannello admin."""
+    try:
+        r = get_redis_client()
+        token = _extract_admin_token(request)
+        if not verify_admin_session(r, token):
+            return JSONResponse(content={"status": "unauthorized", "message": "Sessione non valida."}, status_code=401)
+
+        payload = await request.json()
+        id_sondaggio = payload.get("idSondaggio")
+        if not id_sondaggio:
+            return JSONResponse(content={"status": "error", "message": "ID sondaggio mancante."}, status_code=400)
+
+        res = update_survey(r, id_sondaggio, payload)
+        add_log(r, action="ADMIN_SURVEY_UPDATE", description=f"Sondaggio '{id_sondaggio}' modificato dal pannello di amministrazione", source="backend", user_email="admin@system", level="SUCCESS", ip_address=get_client_ip(request))
         return JSONResponse(content=res)
     except Exception as e:
         return JSONResponse(content={"status": "error", "message": str(e)}, status_code=500)
@@ -236,7 +391,85 @@ async def admin_delete_survey_endpoint(request: Request):
         payload = await request.json()
         id_sondaggio = payload.get("idSondaggio")
         res = delete_survey(r, id_sondaggio)
+        add_log(r, action="ADMIN_SURVEY_DELETE", description=f"Sondaggio '{id_sondaggio}' e relative risposte eliminati dal pannello admin", source="backend", user_email="admin@system", level="WARNING", ip_address=get_client_ip(request))
         return JSONResponse(content=res)
+    except Exception as e:
+        return JSONResponse(content={"status": "error", "message": str(e)}, status_code=500)
+
+
+# ==============================================================================
+# 📜 LOG DI SISTEMA E AUDIT (Frontend & Backend - Retention 30 giorni)
+# ==============================================================================
+
+@app.get("/api/admin/logs")
+@app.get("/admin/logs")
+async def admin_get_logs(
+    request: Request,
+    limit: int = 250,
+    offset: int = 0,
+    source: Optional[str] = None,
+    level: Optional[str] = None,
+    search: Optional[str] = None
+):
+    """Restituisce i log di sistema per la console di amministrazione."""
+    try:
+        r = get_redis_client()
+        token = _extract_admin_token(request)
+        if not verify_admin_session(r, token):
+            return JSONResponse(content={"status": "unauthorized", "message": "Sessione non valida."}, status_code=401)
+
+        logs = get_logs(r, limit=limit, offset=offset, source_filter=source, level_filter=level, search=search)
+        total = get_logs_count(r)
+        return JSONResponse(content={"status": "success", "logs": logs, "total": total})
+    except Exception as e:
+        return JSONResponse(content={"status": "error", "message": str(e)}, status_code=500)
+
+
+@app.post("/api/admin/logs/clear")
+@app.post("/admin/logs/clear")
+async def admin_clear_logs_endpoint(request: Request):
+    """Elimina tutti i log presenti nel database."""
+    try:
+        r = get_redis_client()
+        token = _extract_admin_token(request)
+        if not verify_admin_session(r, token):
+            return JSONResponse(content={"status": "unauthorized", "message": "Sessione non valida."}, status_code=401)
+
+        ip = get_client_ip(request)
+        deleted = clear_all_logs(r)
+        add_log(r, action="LOGS_CLEARED", description=f"Tutti i log ({deleted}) sono stati azzerati manualmente dall'amministratore", source="backend", user_email="admin@system", level="WARNING", ip_address=ip)
+        return JSONResponse(content={"status": "success", "message": f"{deleted} log eliminati.", "deleted": deleted})
+    except Exception as e:
+        return JSONResponse(content={"status": "error", "message": str(e)}, status_code=500)
+
+
+@app.post("/api/logs")
+@app.post("/logs")
+async def client_log_endpoint(request: Request):
+    """Riceve log ed eventi dal frontend React."""
+    try:
+        r = get_redis_client()
+        data = await request.json()
+        action = data.get("action", "CLIENT_EVENT")
+        description = data.get("description", "")
+        level = data.get("level", "INFO")
+        user_email = data.get("userEmail") or data.get("email") or ""
+        user_name = data.get("userName") or data.get("name") or ""
+        meta = data.get("metadata", {})
+        ip = get_client_ip(request)
+
+        entry = add_log(
+            r,
+            action=action,
+            description=description,
+            source="frontend",
+            user_email=user_email,
+            user_name=user_name,
+            level=level,
+            metadata=meta,
+            ip_address=ip
+        )
+        return JSONResponse(content={"status": "success", "log": entry})
     except Exception as e:
         return JSONResponse(content={"status": "error", "message": str(e)}, status_code=500)
 
@@ -355,17 +588,28 @@ async def handle_post(request: Request):
 
         # --- AZIONE: LOGIN ---
         if action == "LOGIN":
+            ip = get_client_ip(request)
             socio = get_socio(r, email)
+            is_refresh = bool(request_data.get("isRefresh") or payload.get("isRefresh"))
+
             if socio:
+                s_name = f"{socio.get('nome', '')} {socio.get('cognome', '')}".strip()
+                # Antirimbalzo / Debounce: evita di registrare due log duplicati se la dashboard carica o React StrictMode riesegue
+                debounce_key = f"ohel:login_debounce:{email}"
+                if not is_refresh and r.set(debounce_key, "1", ex=45, nx=True):
+                    add_log(r, action="USER_LOGIN", description=f"Accesso utente socio effettuato: {email} ({s_name})", source="backend", user_email=email, user_name=s_name, level="SUCCESS", ip_address=ip)
                 return JSONResponse(content={"status": "success", "exists": True, "user": socio})
             else:
                 user_info = token_auth.get("userInfo", {})
+                s_name = f"{user_info.get('given_name', '')} {user_info.get('family_name', '')}".strip()
+                debounce_key = f"ohel:login_debounce:{email}"
+                if not is_refresh and r.set(debounce_key, "1", ex=45, nx=True):
+                    add_log(r, action="USER_FIRST_AUTH", description=f"Primo accesso con account Google non ancora registrato come socio: {email}", source="backend", user_email=email, user_name=s_name, level="INFO", ip_address=ip)
                 return JSONResponse(content={
                     "status": "success",
                     "exists": False,
                     "googleData": {
-                        "idGoogle": user_info.get("sub", ""),
-                        "nome": user_info.get("given_name", ""),
+                        "nome": user_info.get("given_name", "") or user_info.get("name", ""),
                         "cognome": user_info.get("family_name", ""),
                         "email": email,
                         "picture": user_info.get("picture", "")
@@ -376,8 +620,25 @@ async def handle_post(request: Request):
         if action == "REGISTER":
             if get_socio(r, email):
                 return JSONResponse(content={"status": "error", "message": "Utente già registrato"})
-            salva_nuovo_socio(r, payload)
-            return JSONResponse(content={"status": "success", "message": "Registrazione completata"})
+
+            user_info = token_auth.get("userInfo", {})
+            google_nome = user_info.get("given_name") or user_info.get("name") or ""
+            google_cognome = user_info.get("family_name") or ""
+            google_picture = user_info.get("picture") or ""
+
+            socio_payload = {
+                "nome": (payload.get("nome") or google_nome).strip(),
+                "cognome": (payload.get("cognome") or google_cognome).strip(),
+                "email": email,
+                "picture": (payload.get("picture") or google_picture).strip(),
+                "dataNascita": str(payload.get("dataNascita") or payload.get("birthdate") or "").strip(),
+                "telefono": str(payload.get("telefono") or "").strip(),
+                "codiceFiscale": str(payload.get("codiceFiscale") or "").strip().upper(),
+            }
+            salva_nuovo_socio(r, socio_payload)
+            s_name = f"{socio_payload.get('nome', '')} {socio_payload.get('cognome', '')}".strip()
+            add_log(r, action="USER_REGISTERED", description=f"Nuovo socio registrato: {email} ({s_name})", source="backend", user_email=email, user_name=s_name, level="SUCCESS", ip_address=get_client_ip(request))
+            return JSONResponse(content={"status": "success", "message": "Registrazione completata", "user": get_socio(r, email)})
 
         # --- AZIONE SENSIBILE ADMIN: CREAZIONE SONDAGGIO ---
         if action == "CREATE_SURVEY":
@@ -385,8 +646,38 @@ async def handle_post(request: Request):
             if not auth_admin.get("authorized"):
                 return JSONResponse(content={"status": "error", "message": auth_admin.get("message")})
 
-            id_sondaggio = create_survey(r, payload)
+            socio = auth_admin.get("socio", {})
+            creator_name = f"{socio.get('nome', '')} {socio.get('cognome', '')}".strip()
+            id_sondaggio = create_survey(r, payload, creator_email=email, creator_name=creator_name)
+            add_log(r, action="CREATE_SURVEY", description=f"Nuovo sondaggio pubblicato: '{payload.get('title', '')}' (ID: {id_sondaggio}) da {creator_name} ({email})", source="backend", user_email=email, user_name=creator_name, level="SUCCESS", ip_address=get_client_ip(request))
             return JSONResponse(content={"status": "success", "idSondaggio": id_sondaggio})
+
+        # --- AZIONE SENSIBILE ADMIN: MODIFICA CONTENUTO SONDAGGIO ---
+        if action == "UPDATE_SURVEY":
+            auth_admin = check_admin_permissions(r, email)
+            if not auth_admin.get("authorized"):
+                return JSONResponse(content={"status": "error", "message": auth_admin.get("message")})
+
+            id_sondaggio = payload.get("idSondaggio")
+            if not id_sondaggio:
+                return JSONResponse(content={"status": "error", "message": "ID sondaggio mancante per la modifica."})
+
+            survey = get_survey_by_id(r, id_sondaggio)
+            if not survey:
+                return JSONResponse(content={"status": "error", "message": f"Sondaggio '{id_sondaggio}' non trovato."})
+
+            # Verifica di sicurezza: solo chi ha pubblicato il sondaggio può modificarne il contenuto
+            created_by = (survey.get("createdBy") or "").lower().strip()
+            if created_by and created_by != email:
+                add_log(r, action="UNAUTHORIZED_SURVEY_EDIT", description=f"Tentativo non autorizzato di modifica sondaggio '{id_sondaggio}' da {email} (autore: {created_by})", source="backend", user_email=email, level="WARNING", ip_address=get_client_ip(request))
+                return JSONResponse(content={
+                    "status": "error",
+                    "message": "Operazione negata: puoi modificare solo i sondaggi pubblicati da te."
+                })
+
+            res = update_survey(r, id_sondaggio, payload)
+            add_log(r, action="UPDATE_SURVEY", description=f"Sondaggio '{id_sondaggio}' ('{payload.get('title', '')}') modificato dall'autore {email}", source="backend", user_email=email, level="SUCCESS", ip_address=get_client_ip(request))
+            return JSONResponse(content=res)
 
         # --- AZIONE SENSIBILE ADMIN: ATTIVA / DISATTIVATO SONDAGGIO ---
         if action == "TOGGLE_SURVEY_STATUS":
@@ -402,7 +693,19 @@ async def handle_post(request: Request):
                     content={"status": "error", "message": "Dati insufficienti per aggiornare lo stato."}
                 )
 
+            # Verifica di sicurezza: solo chi ha pubblicato il sondaggio può attivarne o disattivarne lo stato
+            survey = get_survey_by_id(r, id_sondaggio_target)
+            if survey:
+                created_by = (survey.get("createdBy") or "").lower().strip()
+                if created_by and created_by != email:
+                    add_log(r, action="UNAUTHORIZED_STATUS_TOGGLE", description=f"Tentativo non autorizzato di cambio stato sondaggio '{id_sondaggio_target}' da {email}", source="backend", user_email=email, level="WARNING", ip_address=get_client_ip(request))
+                    return JSONResponse(content={
+                        "status": "error",
+                        "message": "Operazione negata: solo l'amministratore che ha pubblicato il sondaggio può modificarne lo stato."
+                    })
+
             res = toggle_survey_status(r, id_sondaggio_target, new_status)
+            add_log(r, action="TOGGLE_SURVEY_STATUS", description=f"Stato sondaggio '{id_sondaggio_target}' impostato a '{new_status}' da {email}", source="backend", user_email=email, level="INFO", ip_address=get_client_ip(request))
             return JSONResponse(content=res)
 
         # --- AZIONE SENSIBILE ADMIN: CANCELLAZIONE SONDAGGIO E RISPOSTE ---
@@ -417,7 +720,19 @@ async def handle_post(request: Request):
                     content={"status": "error", "message": "ID Sondaggio mancante per l'eliminazione."}
                 )
 
+            # Verifica di sicurezza: solo chi ha pubblicato il sondaggio può eliminarlo definitivamente
+            survey = get_survey_by_id(r, id_sondaggio_target)
+            if survey:
+                created_by = (survey.get("createdBy") or "").lower().strip()
+                if created_by and created_by != email:
+                    add_log(r, action="UNAUTHORIZED_DELETE", description=f"Tentativo non autorizzato di eliminazione sondaggio '{id_sondaggio_target}' da {email}", source="backend", user_email=email, level="WARNING", ip_address=get_client_ip(request))
+                    return JSONResponse(content={
+                        "status": "error",
+                        "message": "Operazione negata: solo l'amministratore che ha pubblicato il sondaggio può eliminarlo."
+                    })
+
             res = delete_survey(r, id_sondaggio_target)
+            add_log(r, action="DELETE_SURVEY", description=f"Sondaggio '{id_sondaggio_target}' e relative risposte eliminati da {email}", source="backend", user_email=email, level="WARNING", ip_address=get_client_ip(request))
             return JSONResponse(content=res)
 
         # --- AZIONE SENSIBILE SOCIO: SALVATAGGIO PRESENZE / VOTO ---
@@ -429,7 +744,39 @@ async def handle_post(request: Request):
                 )
 
             res = submit_presences(r, email, payload)
+            members_cnt = len(payload.get("membersData", {}))
+            socio_name = f"{socio_corrente.get('nome', '')} {socio_corrente.get('cognome', '')}".strip()
+            add_log(r, action="SUBMIT_PRESENCES", description=f"Preferenze/disponibilità salvate per {members_cnt} persone nel sondaggio '{payload.get('idSondaggio', '')}' da {email}", source="backend", user_email=email, user_name=socio_name, level="SUCCESS", ip_address=get_client_ip(request))
             return JSONResponse(content=res)
+
+        # --- AZIONE: LOG DI OPERAZIONI FRONTEND ---
+        if action == "LOG_CLIENT_EVENT":
+            client_act = payload.get("action", "CLIENT_EVENT")
+            desc = payload.get("description", "")
+            lvl = payload.get("level", "INFO")
+            u_name = payload.get("userName", "")
+            meta = payload.get("metadata", {})
+            entry = add_log(
+                r,
+                action=client_act,
+                description=desc,
+                source="frontend",
+                user_email=email,
+                user_name=u_name,
+                level=lvl,
+                metadata=meta,
+                ip_address=get_client_ip(request)
+            )
+            return JSONResponse(content={"status": "success", "log": entry})
+
+        # --- AZIONE ADMIN FRONTEND: ELENCO SOCI ANAGRAFICA (/soci) ---
+        if action in ("GET_ALL_SOCI", "GET_SOCI", "GET_MEMBERS"):
+            auth_admin = check_admin_permissions(r, email)
+            if not auth_admin.get("authorized"):
+                return JSONResponse(content={"status": "error", "message": auth_admin.get("message")})
+
+            soci = get_all_soci(r)
+            return JSONResponse(content={"status": "success", "soci": soci, "total": len(soci)})
 
         return JSONResponse(content={"status": "error", "message": "Azione POST non riconosciuta"})
 

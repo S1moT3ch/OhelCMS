@@ -4,6 +4,7 @@ import CONFIG from "../config/config";
 import HeaderCompact from "./HeaderCompact";
 import Footer from "../components/Footer";
 import { getCache, setCache, clearCachePattern, clearAllCache } from "../utils/cacheManager";
+import { logClientEvent } from "../utils/logger";
 import LoadingScreen from "./LoadingScreen";
 import MessageDialog from "./MessageDialog";
 
@@ -26,7 +27,8 @@ import {
     ListItem,
     IconButton,
     Tabs,
-    Tab
+    Tab,
+    Alert
 } from "@mui/material";
 import RestaurantIcon from "@mui/icons-material/Restaurant";
 import BlockIcon from "@mui/icons-material/Block";
@@ -36,6 +38,7 @@ import GroupAddIcon from "@mui/icons-material/GroupAdd";
 import DeleteOutlineIcon from "@mui/icons-material/DeleteOutline";
 import PersonIcon from "@mui/icons-material/Person";
 import InfoIcon from "@mui/icons-material/Info";
+import WarningAmberIcon from "@mui/icons-material/WarningAmber";
 
 // Palette cromatica Associazione Ohel
 const OHEL_GREEN = "#2e5b43";
@@ -87,6 +90,34 @@ function SurveyVote() {
 
     const { URL_APPS_SCRIPT } = CONFIG;
 
+    // Allinea le risposte salvate con le date correnti del sondaggio (gestisce aggiunta di nuove date da parte dell'admin)
+    const alignMemberResponsesWithDates = (dataByMember, dates) => {
+        if (!dataByMember || typeof dataByMember !== "object") return {};
+        const aligned = {};
+        const dateList = dates || [];
+
+        Object.keys(dataByMember).forEach(memberName => {
+            const mData = dataByMember[memberName] || {};
+            const sel = { ...(mData.selections || {}) };
+            const abs = { ...(mData.absences || {}) };
+
+            dateList.forEach(d => {
+                if (sel[d.date] === undefined) sel[d.date] = [];
+                if (abs[d.date] === undefined) abs[d.date] = false;
+            });
+
+            aligned[memberName] = {
+                ...mData,
+                selections: sel,
+                absences: abs,
+                selectedIntolerances: mData.selectedIntolerances || [],
+                customIntolerance: mData.customIntolerance || "",
+                generalNotes: mData.generalNotes || ""
+            };
+        });
+        return aligned;
+    };
+
     useEffect(() => {
         const caricaDettagliESelezioni = async () => {
             const idToken = localStorage.getItem("authToken");
@@ -109,13 +140,17 @@ function SurveyVote() {
                     setMembers([mainMemberName]);
 
                     if (targetSurveyCached.voted) {
-                        setIsReadOnly(true);
+                        const needsUpdate = Boolean(targetSurveyCached.needsUpdate);
+                        setIsReadOnly(!needsUpdate);
+                        if (needsUpdate) {
+                            setStep(1);
+                        }
                         const cachedVotes = getCache(`survey_user_votes_${id}_${currentUser.email}`);
                         if (cachedVotes && cachedVotes.data?.dataByMember) {
                             const retrievedMembers = Object.keys(cachedVotes.data.dataByMember);
                             if (retrievedMembers.length > 0) {
                                 setMembers(retrievedMembers);
-                                setMemberResponses(cachedVotes.data.dataByMember);
+                                setMemberResponses(alignMemberResponsesWithDates(cachedVotes.data.dataByMember, targetSurveyCached.dates));
                             }
                             if (cachedVotes.data.compiledForYouBy && cachedVotes.data.compiledForYouBy.isDelegated) {
                                 setCompiledByInfo(cachedVotes.data.compiledForYouBy);
@@ -165,7 +200,11 @@ function SurveyVote() {
                     };
 
                     if (targetSurvey.voted) {
-                        setIsReadOnly(true);
+                        const needsUpdate = Boolean(targetSurvey.needsUpdate);
+                        setIsReadOnly(!needsUpdate);
+                        if (needsUpdate) {
+                            setStep(1);
+                        }
                         const responseVotes = await fetch(`${URL_APPS_SCRIPT}?action=GET_USER_VOTES&email=${encodeURIComponent(currentUser.email)}&idSondaggio=SURV_${id}`, {
                             method: "GET",
                             mode: "cors"
@@ -177,7 +216,7 @@ function SurveyVote() {
                             const retrievedMembers = Object.keys(dataVotes.dataByMember);
                             if (retrievedMembers.length > 0) {
                                 setMembers(retrievedMembers);
-                                setMemberResponses(dataVotes.dataByMember);
+                                setMemberResponses(alignMemberResponsesWithDates(dataVotes.dataByMember, targetSurvey.dates));
                             }
 
                             // Tracciamo se il sondaggio è stato inserito da un altro utente/capofamiglia
@@ -475,6 +514,7 @@ function SurveyVote() {
             const data = await response.json();
 
             if (data.status === "success") {
+                logClientEvent("CLIENT_SUBMIT_PRESENCES", `Disponibilità inviate con successo per ${members.length} membri nel sondaggio SURV_${id}`, { level: "SUCCESS" });
                 clearCachePattern("surveys_active");
                 clearCachePattern(`survey_user_votes_${id}`);
                 clearCachePattern(`survey_all_votes_${id}`);
@@ -507,7 +547,14 @@ function SurveyVote() {
 
     return (
         <Box sx={{ display: "flex", flexDirection: "column", minHeight: "100vh", backgroundColor: OHEL_LIGHT_GREEN, pt: "84px", boxSizing: "border-box" }}>
-            <HeaderCompact subtitle={isReadOnly ? "Gruppo Familiare" : (step === 0 ? "Partecipanti" : `Fase ${step} di 4`)} onLogout={handleLogout} />
+            <HeaderCompact
+                subtitle={
+                    survey?.needsUpdate
+                        ? "Integrazione Risposte"
+                        : (isReadOnly ? "Gruppo Familiare" : (step === 0 ? "Partecipanti" : `Fase ${step} di 4`))
+                }
+                onLogout={handleLogout}
+            />
 
             <Container maxWidth="xs" sx={{ flexGrow: 1, display: "flex", flexDirection: "column", gap: 2, mt: 1, mb: 4 }}>
 
@@ -516,16 +563,71 @@ function SurveyVote() {
                     <Typography variant="h6" fontWeight="800" sx={{ color: OHEL_TEXT_DARK, lineHeight: 1.2, mb: 0.5 }}>
                         {survey?.title}
                     </Typography>
-                    <Typography variant="caption" sx={{ color: OHEL_OCHRE, fontWeight: 700, textTransform: "uppercase" }}>
-                        {isReadOnly
-                            ? "👁️ Sola Lettura"
-                            : step === 0
-                                ? "👥 Step 1: Configura Partecipanti"
-                                : step === 4
-                                    ? "📋 Riepilogo Finale"
-                                    : `Partecipante ${activeMemberIdx + 1} di ${members.length} • Fase ${step} di 3`}
+                    <Typography
+                        variant="caption"
+                        sx={{
+                            color: survey?.needsUpdate ? "#c2410c" : OHEL_OCHRE,
+                            fontWeight: 700,
+                            textTransform: "uppercase"
+                        }}
+                    >
+                        {survey?.needsUpdate
+                            ? "⚠️ Integrazione Risposte Richiesta"
+                            : isReadOnly
+                                ? "👁️ Sola Lettura"
+                                : step === 0
+                                    ? "👥 Step 1: Configura Partecipanti"
+                                    : step === 4
+                                        ? "📋 Riepilogo Finale"
+                                        : `Partecipante ${activeMemberIdx + 1} di ${members.length} • Fase ${step} di 3`}
                     </Typography>
                 </Box>
+
+                {/* BANNER NOTIFICA SE IL SONDAGGIO È STATO MODIFICATO DALL'ADMIN */}
+                {survey?.needsUpdate && (
+                    <Alert
+                        severity="warning"
+                        icon={<WarningAmberIcon sx={{ color: "#c2410c", fontSize: "1.6rem" }} />}
+                        sx={{
+                            borderRadius: "14px",
+                            backgroundColor: "#fff7ed",
+                            border: "1.5px solid #fdba74",
+                            color: "#9a3412",
+                            boxShadow: "0 2px 8px rgba(230, 95, 43, 0.06)",
+                            "& .MuiAlert-message": { width: "100%", py: 0.2 }
+                        }}
+                    >
+                        <Typography variant="subtitle2" fontWeight="800" sx={{ color: "#9a3412", fontSize: "0.85rem", lineHeight: 1.3 }}>
+                            ⚠️ Sondaggio aggiornato dall'amministratore
+                        </Typography>
+                        <Typography variant="caption" sx={{ color: "#c2410c", display: "block", mt: 0.4, lineHeight: 1.35 }}>
+                            Questo sondaggio è stato modificato dopo la tua compilazione. Le tue selezioni precedenti sono state conservate: verifica le novità (o eventuali nuove date) e premi il pulsante di conferma finale per completare l'integrazione.
+                        </Typography>
+                        {isReadOnly && (
+                            <Button
+                                variant="contained"
+                                size="small"
+                                onClick={() => {
+                                    setIsReadOnly(false);
+                                    setStep(1);
+                                }}
+                                sx={{
+                                    mt: 1.2,
+                                    backgroundColor: "#e65f2b",
+                                    color: "#ffffff",
+                                    fontWeight: 800,
+                                    fontSize: "0.76rem",
+                                    textTransform: "none",
+                                    borderRadius: "8px",
+                                    boxShadow: "0 2px 6px rgba(230, 95, 43, 0.25)",
+                                    "&:hover": { backgroundColor: "#c2410c" }
+                                }}
+                            >
+                                Integra Risposte Adesso →
+                            </Button>
+                        )}
+                    </Alert>
+                )}
 
                 {/* BANNER INFORMATIVO SE IL FORM È STATO COMPILATO DA UN PARENTE/DELEGATO */}
                 {isReadOnly && compiledByInfo && (

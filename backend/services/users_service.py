@@ -24,18 +24,20 @@ def get_socio(r: redis.Redis, email: str) -> Optional[Dict[str, Any]]:
     is_admin = is_admin_raw is True or str(is_admin_raw).lower() in ("true", "1")
 
     return {
-        "idGoogle": data.get("idGoogle", ""),
         "nome": data.get("nome", ""),
         "cognome": data.get("cognome", ""),
         "email": data.get("email", clean_email),
         "picture": (data.get("picture") or "").replace(" ", ""),
-        "isAdmin": is_admin
+        "isAdmin": is_admin,
+        "dataNascita": data.get("dataNascita", "") or data.get("birthdate", ""),
+        "dataRegistrazione": data.get("dataRegistrazione", ""),
+        "telefono": data.get("telefono", ""),
+        "codiceFiscale": data.get("codiceFiscale", "")
     }
 
 def salva_nuovo_socio(r: redis.Redis, payload: Dict[str, Any]) -> None:
     """
-    Salva un nuovo socio in Redis.
-    Replica esattamente salvaNuovoSocio di GAS.
+    Salva un nuovo socio in Redis con tutte le sue informazioni anagrafiche.
     """
     email = payload.get("email", "").lower().strip()
     if not email:
@@ -45,16 +47,20 @@ def salva_nuovo_socio(r: redis.Redis, payload: Dict[str, Any]) -> None:
     now_str = datetime.now(timezone.utc).strftime("%d/%m/%Y %H.%M.%S")
 
     user_data = {
-        "idGoogle": str(payload.get("idGoogle", "")),
-        "nome": str(payload.get("nome", "")),
-        "cognome": str(payload.get("cognome", "")),
+        "nome": str(payload.get("nome", "")).strip(),
+        "cognome": str(payload.get("cognome", "")).strip(),
         "email": email,
-        "picture": str(payload.get("picture", "")),
+        "picture": str(payload.get("picture", "")).strip(),
+        "dataNascita": str(payload.get("dataNascita", "") or payload.get("birthdate", "") or "").strip(),
+        "telefono": str(payload.get("telefono", "") or "").strip(),
+        "codiceFiscale": str(payload.get("codiceFiscale", "") or "").strip().upper(),
         "dataRegistrazione": now_str,
         "isAdmin": "false"
     }
 
     r.hset(user_key, mapping=user_data)
+    # Se presente vecchia chiave idGoogle la eliminiamo per pulizia privacy
+    r.hdel(user_key, "idGoogle")
     r.sadd(REDIS_KEY_USERS, email)
 
 def check_admin_permissions(r: redis.Redis, email: str) -> Dict[str, Any]:

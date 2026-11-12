@@ -5,6 +5,7 @@ import HeaderCompact from "./HeaderCompact";
 import Footer from "../components/Footer";
 import { getCache, setCache, clearAllCache } from "../utils/cacheManager";
 import { prefetchBackgroundData } from "../utils/prefetchManager";
+import { logClientEvent } from "../utils/logger";
 import LoadingScreen from "./LoadingScreen";
 
 // Importazioni Material-UI
@@ -18,9 +19,9 @@ import {
     Avatar,
     Stack,
     Chip,
+    Alert,
 } from "@mui/material";
 import AddIcon from "@mui/icons-material/Add";
-import BarChartIcon from "@mui/icons-material/BarChart";
 import AssessmentIcon from "@mui/icons-material/Assessment";
 import CalendarMonthIcon from "@mui/icons-material/CalendarMonth";
 import CheckCircleOutlineIcon from "@mui/icons-material/CheckCircleOutline";
@@ -28,6 +29,8 @@ import HowToVoteIcon from "@mui/icons-material/HowToVote";
 import AdminPanelSettingsIcon from "@mui/icons-material/AdminPanelSettings";
 import PersonIcon from "@mui/icons-material/Person";
 import TuneIcon from "@mui/icons-material/Tune";
+import WarningAmberIcon from "@mui/icons-material/WarningAmber";
+import PeopleAltIcon from "@mui/icons-material/PeopleAlt";
 
 // Palette cromatica Associazione Ohel
 const OHEL_GREEN = "#2e5b43";      // Verde brand Ohel (Sondaggi da compilare)
@@ -81,7 +84,7 @@ function Dashboard() {
                 const loginPromise = fetch(URL_APPS_SCRIPT, {
                     method: "POST",
                     mode: "cors",
-                    body: JSON.stringify({ action: "LOGIN", token: idToken }),
+                    body: JSON.stringify({ action: "LOGIN", token: idToken, isRefresh: true }),
                 });
 
                 const surveysPromise = initialEmail
@@ -139,6 +142,7 @@ function Dashboard() {
     }, [URL_APPS_SCRIPT]);
 
     const handleLogout = () => {
+        logClientEvent("CLIENT_LOGOUT", `Disconnessione utente: ${user?.email || "socio"}`);
         clearAllCache();
         navigate("/", { replace: true });
     };
@@ -161,6 +165,8 @@ function Dashboard() {
     }
 
     const pendingSurveysCount = surveys.filter(s => !s.voted).length;
+    const needingUpdateSurveys = surveys.filter(s => s.needsUpdate);
+    const needingUpdateCount = needingUpdateSurveys.length;
 
     return (
         <Box sx={{
@@ -238,7 +244,23 @@ function Dashboard() {
                                             px: 0.5,
                                         }}
                                     />
-                                    {pendingSurveysCount > 0 ? (
+                                    {needingUpdateCount > 0 ? (
+                                        <Chip
+                                            icon={<WarningAmberIcon style={{ fontSize: 13, color: "#c2410c" }} />}
+                                            label={`${needingUpdateCount} da integrare`}
+                                            size="small"
+                                            sx={{
+                                                height: 24,
+                                                backgroundColor: "#ffedd5",
+                                                color: "#c2410c",
+                                                borderColor: "#fdba74",
+                                                borderStyle: "solid",
+                                                borderWidth: "1px",
+                                                fontWeight: 800,
+                                                fontSize: "0.72rem"
+                                            }}
+                                        />
+                                    ) : pendingSurveysCount > 0 ? (
                                         <Chip
                                             icon={<HowToVoteIcon style={{ fontSize: 13, color: "#15803d" }} />}
                                             label={`${pendingSurveysCount} in sospeso`}
@@ -265,95 +287,157 @@ function Dashboard() {
                             ⚡ Consultazioni Attive
                         </Typography>
 
+                        {/* BANNER NOTIFICA SE CI SONO SONDAGGI MODIFICATI DALL'ADMIN DA INTEGRARE */}
+                        {needingUpdateCount > 0 && (
+                            <Alert
+                                severity="warning"
+                                icon={<WarningAmberIcon sx={{ color: "#c2410c", fontSize: "1.4rem" }} />}
+                                sx={{
+                                    mb: 2,
+                                    borderRadius: "14px",
+                                    backgroundColor: "#fff7ed",
+                                    border: "1px solid #fed7aa",
+                                    color: "#9a3412",
+                                    boxShadow: "0 2px 8px rgba(230, 95, 43, 0.06)",
+                                    "& .MuiAlert-message": { width: "100%", py: 0.2 }
+                                }}
+                            >
+                                <Typography variant="subtitle2" fontWeight="800" sx={{ color: "#9a3412", fontSize: "0.85rem", lineHeight: 1.3 }}>
+                                    {needingUpdateCount === 1
+                                        ? "1 sondaggio compilato è stato modificato dall'amministratore"
+                                        : `${needingUpdateCount} sondaggi compilati sono stati modificati dall'amministratore`}
+                                </Typography>
+                                <Typography variant="caption" sx={{ color: "#c2410c", display: "block", mt: 0.3, lineHeight: 1.35 }}>
+                                    Ti invitiamo cortesemente a verificare le variazioni o le nuove date inserite e a confermare l'integrazione delle tue risposte.
+                                </Typography>
+                            </Alert>
+                        )}
+
                         {surveys.length > 0 ? (
                             /* ✨ STACK CON GAP MAGGIORE (2.5 = 20px) PER DARE PIÙ SPAZIO TRA LE CARD */
                             <Stack gap={2.5}>
-                                {surveys.map((survey) => (
-                                    <Card
-                                        key={survey.idSondaggio}
-                                        sx={{
-                                            borderRadius: "18px",
-                                            border: "1px solid #e1ebe5",
-                                            borderLeft: `6px solid ${survey.voted ? OHEL_OCHRE : OHEL_GREEN}`,
-                                            backgroundColor: "#ffffff",
-                                            boxShadow: "0 4px 14px rgba(46, 91, 67, 0.04)",
-                                            transition: "transform 0.2s ease, box-shadow 0.2s ease",
-                                            "&:hover": {
-                                                transform: "translateY(-2px)",
-                                                boxShadow: "0 6px 18px rgba(46, 91, 67, 0.08)"
-                                            }
-                                        }}
-                                    >
-                                        <CardContent sx={{ p: 2.5, "&:last-child": { pb: 2.5 } }}>
-                                            <Box display="flex" alignItems="center" justifyContent="space-between" gap={2} flexWrap="wrap">
-                                                <Box flex={1} minWidth="200px">
-                                                    <Box display="flex" alignItems="center" gap={1} mb={0.6}>
-                                                        <Typography variant="subtitle1" fontWeight="800" sx={{ color: OHEL_TEXT_DARK, lineHeight: 1.2, fontSize: "0.98rem" }}>
-                                                            {survey.title}
-                                                        </Typography>
+                                {surveys.map((survey) => {
+                                    const needsUpdate = Boolean(survey.needsUpdate);
+                                    const isVoted = Boolean(survey.voted);
+
+                                    let cardBorderColor = OHEL_GREEN;
+                                    if (needsUpdate) {
+                                        cardBorderColor = OHEL_ORANGE;
+                                    } else if (isVoted) {
+                                        cardBorderColor = OHEL_OCHRE;
+                                    }
+
+                                    return (
+                                        <Card
+                                            key={survey.idSondaggio}
+                                            sx={{
+                                                borderRadius: "18px",
+                                                border: "1px solid #e1ebe5",
+                                                borderLeft: `6px solid ${cardBorderColor}`,
+                                                backgroundColor: "#ffffff",
+                                                boxShadow: "0 4px 14px rgba(46, 91, 67, 0.04)",
+                                                transition: "transform 0.2s ease, box-shadow 0.2s ease",
+                                                "&:hover": {
+                                                    transform: "translateY(-2px)",
+                                                    boxShadow: "0 6px 18px rgba(46, 91, 67, 0.08)"
+                                                }
+                                            }}
+                                        >
+                                            <CardContent sx={{ p: 2.5, "&:last-child": { pb: 2.5 } }}>
+                                                <Box display="flex" alignItems="center" justifyContent="space-between" gap={2} flexWrap="wrap">
+                                                    <Box flex={1} minWidth="200px">
+                                                        <Box display="flex" alignItems="center" gap={1} mb={0.6}>
+                                                            <Typography variant="subtitle1" fontWeight="800" sx={{ color: OHEL_TEXT_DARK, lineHeight: 1.2, fontSize: "0.98rem" }}>
+                                                                {survey.title}
+                                                            </Typography>
+                                                            {needsUpdate ? (
+                                                                <Chip
+                                                                    icon={<WarningAmberIcon style={{ fontSize: 13, color: "#c2410c" }} />}
+                                                                    label="Da Integrare (Modificato)"
+                                                                    size="small"
+                                                                    sx={{
+                                                                        height: 22,
+                                                                        backgroundColor: "#ffedd5",
+                                                                        color: "#c2410c",
+                                                                        border: "1px solid #fdba74",
+                                                                        fontWeight: 800,
+                                                                        fontSize: "0.70rem",
+                                                                        borderRadius: "6px",
+                                                                    }}
+                                                                />
+                                                            ) : (
+                                                                <Chip
+                                                                    label={isVoted ? "Già Compilato" : "Da Compilare"}
+                                                                    size="small"
+                                                                    sx={{
+                                                                        height: 22,
+                                                                        backgroundColor: isVoted ? "#fef3c7" : "#dcfce7",
+                                                                        color: isVoted ? "#92400e" : "#166534",
+                                                                        fontWeight: 700,
+                                                                        fontSize: "0.70rem",
+                                                                        borderRadius: "6px",
+                                                                    }}
+                                                                />
+                                                            )}
+                                                        </Box>
+                                                        {survey.description && (
+                                                            <Typography variant="body2" sx={{ color: "#52796f", fontSize: "0.84rem", lineHeight: 1.4, display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" }}>
+                                                                {survey.description}
+                                                            </Typography>
+                                                        )}
+                                                        {needsUpdate && (
+                                                            <Box sx={{ mt: 1, p: 0.9, backgroundColor: "#fff7ed", borderRadius: "8px", border: "1px dashed #fdba74" }}>
+                                                                <Typography variant="caption" fontWeight="700" sx={{ color: "#c2410c", display: "block", fontSize: "0.74rem", lineHeight: 1.35 }}>
+                                                                    ⚠️ Questo sondaggio è stato aggiornato dall'amministratore dopo il tuo ultimo invio. Integra le risposte per confermare la tua disponibilità.
+                                                                </Typography>
+                                                            </Box>
+                                                        )}
+                                                    </Box>
+
+                                                    <Box display="flex" alignItems="center" gap={1.5}>
                                                         <Chip
-                                                            label={survey.voted ? "Già Compilato" : "Da Compilare"}
+                                                            icon={<CalendarMonthIcon style={{ fontSize: 14, color: needsUpdate ? OHEL_ORANGE : (isVoted ? OHEL_OCHRE : OHEL_GREEN) }} />}
+                                                            label={getDatesCountLabel(survey.dates)}
+                                                            variant="outlined"
                                                             size="small"
                                                             sx={{
-                                                                height: 22,
-                                                                backgroundColor: survey.voted ? "#fef3c7" : "#dcfce7",
-                                                                color: survey.voted ? "#92400e" : "#166534",
-                                                                fontWeight: 700,
-                                                                fontSize: "0.70rem",
-                                                                borderRadius: "6px",
+                                                                height: 26,
+                                                                borderColor: needsUpdate ? "#fdba74" : (isVoted ? "#fde68a" : "#bbf7d0"),
+                                                                backgroundColor: needsUpdate ? "#fff7ed" : (isVoted ? "#fffbeb" : "#f0fdf4"),
+                                                                color: needsUpdate ? "#c2410c" : (isVoted ? "#b45309" : "#15803d"),
+                                                                fontWeight: 600,
+                                                                fontSize: "0.74rem"
                                                             }}
                                                         />
+
+                                                        <Button
+                                                            variant={needsUpdate ? "contained" : (isVoted ? "outlined" : "contained")}
+                                                            size="small"
+                                                            onClick={() => navigate(`/surveys/${survey.idSondaggio.replace("SURV_", "")}`)}
+                                                            sx={{
+                                                                height: 36,
+                                                                px: 2.2,
+                                                                backgroundColor: needsUpdate ? OHEL_ORANGE : (isVoted ? "transparent" : OHEL_GREEN),
+                                                                borderColor: needsUpdate ? "transparent" : (isVoted ? OHEL_OCHRE : "transparent"),
+                                                                color: needsUpdate ? "#ffffff" : (isVoted ? OHEL_OCHRE : "#ffffff"),
+                                                                borderRadius: "10px",
+                                                                textTransform: "none",
+                                                                fontWeight: "700",
+                                                                fontSize: "0.80rem",
+                                                                boxShadow: needsUpdate ? "0 2px 8px rgba(230, 95, 43, 0.25)" : (isVoted ? "none" : "0 2px 8px rgba(46, 91, 67, 0.15)"),
+                                                                "&:hover": {
+                                                                    backgroundColor: needsUpdate ? "#c2410c" : (isVoted ? "#fffbeb" : "#1e382b"),
+                                                                }
+                                                            }}
+                                                        >
+                                                            {needsUpdate ? "Integra Risposte →" : (isVoted ? "Modifica Risposte →" : "Compila Disponibilità →")}
+                                                        </Button>
                                                     </Box>
-                                                    {survey.description && (
-                                                        <Typography variant="body2" sx={{ color: "#52796f", fontSize: "0.84rem", lineHeight: 1.4, display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" }}>
-                                                            {survey.description}
-                                                        </Typography>
-                                                    )}
                                                 </Box>
-
-                                                <Box display="flex" alignItems="center" gap={1.5}>
-                                                    <Chip
-                                                        icon={<CalendarMonthIcon style={{ fontSize: 14, color: survey.voted ? OHEL_OCHRE : OHEL_GREEN }} />}
-                                                        label={getDatesCountLabel(survey.dates)}
-                                                        variant="outlined"
-                                                        size="small"
-                                                        sx={{
-                                                            height: 26,
-                                                            borderColor: survey.voted ? "#fde68a" : "#bbf7d0",
-                                                            backgroundColor: survey.voted ? "#fffbeb" : "#f0fdf4",
-                                                            color: survey.voted ? "#b45309" : "#15803d",
-                                                            fontWeight: 600,
-                                                            fontSize: "0.74rem"
-                                                        }}
-                                                    />
-
-                                                    <Button
-                                                        variant={survey.voted ? "outlined" : "contained"}
-                                                        size="small"
-                                                        onClick={() => navigate(`/surveys/${survey.idSondaggio.replace("SURV_", "")}`)}
-                                                        sx={{
-                                                            height: 36,
-                                                            px: 2.2,
-                                                            backgroundColor: survey.voted ? "transparent" : OHEL_GREEN,
-                                                            borderColor: survey.voted ? OHEL_OCHRE : "transparent",
-                                                            color: survey.voted ? OHEL_OCHRE : "#ffffff",
-                                                            borderRadius: "10px",
-                                                            textTransform: "none",
-                                                            fontWeight: "700",
-                                                            fontSize: "0.80rem",
-                                                            boxShadow: survey.voted ? "none" : "0 2px 8px rgba(46, 91, 67, 0.15)",
-                                                            "&:hover": {
-                                                                backgroundColor: survey.voted ? "#fffbeb" : "#1e382b",
-                                                            }
-                                                        }}
-                                                    >
-                                                        {survey.voted ? "Modifica Risposte →" : "Compila Disponibilità →"}
-                                                    </Button>
-                                                </Box>
-                                            </Box>
-                                        </CardContent>
-                                    </Card>
-                                ))}
+                                            </CardContent>
+                                        </Card>
+                                    );
+                                })}
                             </Stack>
                         ) : (
                             <Card sx={{ borderRadius: "18px", border: "1px dashed #cbd5e1", backgroundColor: "#ffffff" }}>
@@ -536,7 +620,7 @@ function Dashboard() {
                                 </Card>
                             )}
 
-                            {/* TESSERA 4: REGISTRO PRESENZE */}
+                            {/* TESSERA 4: ANAGRAFICA SOCI (SOLO ADMIN) */}
                             {user.isAdmin && (
                                 <Card sx={{
                                     gridColumn: { xs: "span 1", sm: "span 3" },
@@ -555,14 +639,14 @@ function Dashboard() {
                                         <Box mb={1.5}>
                                             <Box display="flex" alignItems="center" gap={1} mb={0.6}>
                                                 <Box sx={{ backgroundColor: "#e0f2fe", p: 0.7, borderRadius: "8px", display: "flex", shrink: 0 }}>
-                                                    <BarChartIcon sx={{ color: OHEL_BLUE, fontSize: "1.2rem" }} />
+                                                    <PeopleAltIcon sx={{ color: OHEL_BLUE, fontSize: "1.2rem" }} />
                                                 </Box>
                                                 <Typography variant="subtitle1" fontWeight="800" sx={{ color: OHEL_TEXT_DARK, fontSize: "0.88rem", lineHeight: 1.15 }}>
-                                                    Registro Presenze
+                                                    Anagrafica Soci
                                                 </Typography>
                                             </Box>
                                             <Typography variant="caption" sx={{ color: "#64748b", fontSize: "0.75rem", lineHeight: 1.3, display: "block" }}>
-                                                Statistiche & profili cibari
+                                                Elenco iscritti e generalità
                                             </Typography>
                                         </Box>
 
@@ -570,7 +654,7 @@ function Dashboard() {
                                             variant="contained"
                                             size="small"
                                             fullWidth
-                                            onClick={() => navigate("/disponibilita")}
+                                            onClick={() => navigate("/soci")}
                                             sx={{
                                                 height: 34,
                                                 backgroundColor: OHEL_BLUE,
@@ -580,10 +664,10 @@ function Dashboard() {
                                                 fontWeight: "700",
                                                 fontSize: "0.76rem",
                                                 boxShadow: "0 2px 8px rgba(42, 111, 151, 0.15)",
-                                                "&:hover": { backgroundColor: "#1d4ed8" }
+                                                "&:hover": { backgroundColor: "#1e5372" }
                                             }}
                                         >
-                                            Consulta
+                                            Visualizza Soci
                                         </Button>
                                     </CardContent>
                                 </Card>

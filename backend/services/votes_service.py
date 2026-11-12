@@ -1,4 +1,5 @@
 import json
+import time
 from datetime import datetime, timezone
 from typing import Dict, Any
 import redis
@@ -59,7 +60,8 @@ def submit_presences(r: redis.Redis, email: str, payload: Dict[str, Any]) -> Dic
             "selectedIntolerances": int_list,
             "customIntolerance": "",
             "generalNotes": general_notes,
-            "timestamp": now_str
+            "timestamp": now_str,
+            "votedAt": int(time.time() * 1000)
         }
 
         r.hset(votes_key, member_name, json.dumps(member_record, ensure_ascii=False))

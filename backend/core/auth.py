@@ -6,16 +6,30 @@ from core.config import GOOGLE_CLIENT_ID
 
 async def verify_google_token(id_token: str) -> Dict[str, Any]:
     """
-    Verifica la validità dell'idToken chiamando l'endpoint Google OAuth2 tokeninfo.
-    Replica esattamente la logica dell'helper Google Apps Script verifyGoogleToken.
+    Verifica la validità del token Google (supporta sia ID Token JWT che Access Token Bearer ya29.).
+    Replica ed estende la logica dell'helper Google Apps Script verifyGoogleToken.
     Utilizza urllib standard library (nessuna dipendenza esterna richiesta).
     """
     if not id_token:
         return {"success": False, "message": "Autenticazione richiesta: token mancante."}
 
     try:
-        url = "https://oauth2.googleapis.com/tokeninfo?id_token=" + urllib.parse.quote(id_token)
-        req = urllib.request.Request(url, headers={"User-Agent": "OhelCMS-Backend/1.0"})
+        clean_token = id_token.strip()
+
+        # Supporto Access Token Google (usato con useGoogleLogin / flow OAuth2 standard)
+        if clean_token.startswith("ya29."):
+            url = "https://www.googleapis.com/oauth2/v3/userinfo"
+            req = urllib.request.Request(
+                url,
+                headers={
+                    "User-Agent": "OhelCMS-Backend/1.0",
+                    "Authorization": f"Bearer {clean_token}"
+                }
+            )
+        else:
+            # Supporto Google ID Token (JWT GSI)
+            url = "https://oauth2.googleapis.com/tokeninfo?id_token=" + urllib.parse.quote(clean_token)
+            req = urllib.request.Request(url, headers={"User-Agent": "OhelCMS-Backend/1.0"})
         
         try:
             with urllib.request.urlopen(req, timeout=10) as resp:
@@ -37,7 +51,7 @@ async def verify_google_token(id_token: str) -> Dict[str, Any]:
             return {"success": False, "message": "Email non trovata all'interno del token Google."}
 
         aud = user_info.get("aud")
-        if GOOGLE_CLIENT_ID and aud != GOOGLE_CLIENT_ID:
+        if aud and GOOGLE_CLIENT_ID and aud != GOOGLE_CLIENT_ID:
             return {"success": False, "message": "Client ID del token non corrisponde all'applicazione."}
 
         return {

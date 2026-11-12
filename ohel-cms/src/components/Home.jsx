@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { GoogleLogin } from "@react-oauth/google";
+import { useGoogleLogin } from "@react-oauth/google";
 import CONFIG from "../config/config";
 import HeaderCompact from "./HeaderCompact";
 import Footer from "./Footer";
@@ -19,7 +19,6 @@ function Home() {
     };
 
     const [formData, setFormData] = useState({
-        idGoogle: "",
         nome: "",
         cognome: "",
         email: "",
@@ -37,16 +36,16 @@ function Home() {
         }
     }, []);
 
-    const handleLoginSuccess = async (credentialResponse) => {
+    const processLoginWithToken = async (token) => {
         setLoading(true);
-        const idToken = credentialResponse.credential;
-        localStorage.setItem("authToken", idToken);
+        localStorage.setItem("authToken", token);
 
         try {
             const response = await fetch(URL_APPS_SCRIPT, {
                 method: "POST",
                 mode: "cors",
-                body: JSON.stringify({ action: "LOGIN", token: idToken }),
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ action: "LOGIN", token: token }),
             });
 
             if (!response.ok) {
@@ -65,11 +64,10 @@ function Home() {
                     navigate("/dashboard");
                 } else {
                     setFormData({
-                        idGoogle: data.googleData.idGoogle,
-                        nome: data.googleData.nome,
-                        cognome: data.googleData.cognome,
-                        email: data.googleData.email,
-                        picture: data.googleData.picture
+                        nome: data.googleData?.nome || "",
+                        cognome: data.googleData?.cognome || "",
+                        email: data.googleData?.email || "",
+                        picture: data.googleData?.picture || ""
                     });
                     setShowRegisterForm(true);
                 }
@@ -85,30 +83,37 @@ function Home() {
         }
     };
 
-    const handleLoginError = () => {
-        console.error("Accesso con Google fallito.");
-        showDialog("Accesso Fallito", "Si è verificato un errore durante il login con Google.", "warning");
-    };
+    const loginWithGoogle = useGoogleLogin({
+        onSuccess: async (tokenResponse) => {
+            await processLoginWithToken(tokenResponse.access_token);
+        },
+        onError: () => {
+            console.error("Accesso con Google fallito.");
+            showDialog("Accesso Fallito", "Si è verificato un errore durante il login con Google.", "warning");
+        }
+    });
 
     const handleRegisterSubmit = async (e) => {
         e.preventDefault();
         setLoading(true);
-        const idToken = localStorage.getItem("authToken");
+        const token = localStorage.getItem("authToken");
 
         try {
             const response = await fetch(URL_APPS_SCRIPT, {
                 method: "POST",
                 mode: "cors",
+                headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
                     action: "REGISTER",
-                    token: idToken,
+                    token: token,
                     payload: formData
                 }),
             });
             const data = await response.json();
 
             if (data.status === "success") {
-                localStorage.setItem("userProfile", JSON.stringify(formData));
+                const userObj = data.user || formData;
+                localStorage.setItem("userProfile", JSON.stringify(userObj));
                 setShowRegisterForm(false);
                 navigate("/dashboard");
             } else {
@@ -151,44 +156,45 @@ function Home() {
 
                 {!showRegisterForm ? (
                     <main style={styles.menu}>
-                        <button
-                            style={{ ...styles.button, ...styles.primaryButton }}
-                            onClick={() => navigate("/disponibilita")}
-                        >
-                            Visualizza le presenze
-                        </button>
-
-                        <div style={styles.divider}>
-                            <span style={styles.dividerText}>oppure gestisci</span>
-                        </div>
-
-                        <div style={styles.loginContainer}>
-                            {isLoggedIn ? (
-                                /* Interfaccia se l'utente ha già effettuato l'accesso in precedenza */
-                                <button
-                                    style={{ ...styles.button, ...styles.secondaryButton }}
-                                    onClick={() => navigate("/dashboard")}
-                                >
-                                    Vai alla tua Area Riservata →
-                                </button>
-                            ) : (
-                                /* Mostra il login nativo di Google solo se non è loggato */
-                                <GoogleLogin
-                                    onSuccess={handleLoginSuccess}
-                                    onError={handleLoginError}
-                                    theme="outline"
-                                    size="large"
-                                    shape="pill"
-                                    locale="it"
-                                    width="100%"
-                                />
-                            )}
-                        </div>
+                        {isLoggedIn ? (
+                            /* Interfaccia se l'utente ha già effettuato l'accesso in precedenza */
+                            <button
+                                style={{
+                                    ...styles.button,
+                                    ...styles.primaryButton,
+                                    width: "auto",
+                                    minWidth: "210px",
+                                    padding: "9px 18px",
+                                    fontSize: "0.88rem",
+                                    borderRadius: "10px"
+                                }}
+                                onClick={() => navigate("/dashboard")}
+                            >
+                                Vai alla tua Area Riservata →
+                            </button>
+                        ) : (
+                            /* Tasto Accesso con Google integrato nello stile Ohel */
+                            <button
+                                type="button"
+                                style={styles.googleLoginButton}
+                                onClick={() => loginWithGoogle()}
+                            >
+                                <div style={styles.googleIconBadge}>
+                                    <svg width="15" height="15" viewBox="0 0 24 24">
+                                        <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" />
+                                        <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" />
+                                        <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z" />
+                                        <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z" />
+                                    </svg>
+                                </div>
+                                <span style={styles.googleLoginText}>Accedi con Google</span>
+                            </button>
+                        )}
                     </main>
                 ) : (
                     <form onSubmit={handleRegisterSubmit} style={styles.formSection}>
                         <h2 style={styles.formTitle}>Completa Iscrizione</h2>
-                        <p style={styles.formSubtitle}>Conferma i tuoi dati istituzionali per accedere.</p>
+                        <p style={styles.formSubtitle}>I tuoi dati verificati da Google per l'accesso.</p>
 
                         <div style={styles.inputGroup}>
                             <label style={styles.label}>Nome</label>
@@ -304,27 +310,42 @@ const styles = {
         gap: "16px",
         width: "100%",
         alignItems: "center",
+        marginTop: "16px",
     },
-    loginContainer: {
-        width: "100%",
-        display: "flex",
+    googleLoginButton: {
+        display: "inline-flex",
+        alignItems: "center",
         justifyContent: "center",
+        gap: "10px",
+        padding: "8px 18px",
+        minWidth: "210px",
+        maxWidth: "260px",
+        backgroundColor: "#2e5b43",
+        color: "#ffffff",
+        border: "none",
+        borderRadius: "10px",
+        cursor: "pointer",
+        boxShadow: "0 3px 10px rgba(46, 91, 67, 0.18)",
+        transition: "all 0.2s ease",
+        boxSizing: "border-box",
+        fontFamily: "inherit",
     },
-    divider: {
-        width: "100%",
+    googleIconBadge: {
+        width: "22px",
+        height: "22px",
+        backgroundColor: "#ffffff",
+        borderRadius: "50%",
         display: "flex",
         alignItems: "center",
-        textAlign: "center",
-        margin: "8px 0",
+        justifyContent: "center",
+        boxShadow: "0 1px 2px rgba(0, 0, 0, 0.12)",
+        flexShrink: 0,
     },
-    dividerText: {
-        fontSize: "0.85rem",
-        color: "#83a697",
-        textTransform: "uppercase",
-        letterSpacing: "0.06em",
-        margin: "0 auto",
-        backgroundColor: "#f4f7f5",
-        padding: "0 12px",
+    googleLoginText: {
+        fontSize: "0.88rem",
+        fontWeight: "600",
+        letterSpacing: "0.01em",
+        color: "#ffffff",
     },
     loadingSpinner: {
         color: "#2e5b43",
