@@ -32,6 +32,10 @@ from services.surveys_service import (
     toggle_survey_status,
     delete_survey,
 )
+from services.excel_survey_service import (
+    parse_excel_base64,
+    generate_survey_excel_template,
+)
 from services.votes_service import submit_presences, get_user_votes, get_all_survey_votes
 from services.admin_service import (
     create_admin_session,
@@ -528,6 +532,17 @@ async def handle_get(request: Request):
             res = get_all_survey_votes(r, id_sondaggio)
             return JSONResponse(content=res)
 
+        # 4. GET_EXCEL_TEMPLATE (Restituisce il file Excel modello in base64)
+        if action == "GET_EXCEL_TEMPLATE":
+            import base64
+            template_bytes = generate_survey_excel_template()
+            b64_str = base64.b64encode(template_bytes).decode("utf-8")
+            return JSONResponse(content={
+                "status": "success",
+                "fileName": "Template_Questionario_Ohel.xlsx",
+                "fileBase64": b64_str
+            })
+
         return JSONResponse(content={"status": "error", "message": "Azione GET non riconosciuta"})
 
     except Exception as error:
@@ -651,6 +666,98 @@ async def handle_post(request: Request):
             id_sondaggio = create_survey(r, payload, creator_email=email, creator_name=creator_name)
             add_log(r, action="CREATE_SURVEY", description=f"Nuovo sondaggio pubblicato: '{payload.get('title', '')}' (ID: {id_sondaggio}) da {creator_name} ({email})", source="backend", user_email=email, user_name=creator_name, level="SUCCESS", ip_address=get_client_ip(request))
             return JSONResponse(content={"status": "success", "idSondaggio": id_sondaggio})
+
+        # --- AZIONE SENSIBILE ADMIN: PARSING FILE EXCEL PER QUESTIONARIO ---
+        if action == "PARSE_EXCEL_SURVEY":
+            auth_admin = check_admin_permissions(r, email)
+            if not auth_admin.get("authorized"):
+                return JSONResponse(content={"status": "error", "message": auth_admin.get("message")})
+
+            file_base64 = payload.get("fileBase64") or payload.get("fileData") or ""
+            file_name = payload.get("fileName") or "questionario.xlsx"
+
+            if not file_base64:
+                return JSONResponse(content={"status": "error", "message": "Nessun file Excel inviato."})
+
+            parsed_res = parse_excel_base64(file_base64, file_name)
+            if not parsed_res.get("success"):
+                add_log(
+                    r,
+                    action="EXCEL_PARSE_FAILED",
+                    description=f"Tentativo di parsing Excel fallito per '{file_name}': {parsed_res.get('error')}",
+                    source="backend",
+                    user_email=email,
+                    level="WARNING",
+                    ip_address=get_client_ip(request)
+                )
+                return JSONResponse(content={"status": "error", "message": parsed_res.get("error")})
+
+            socio = auth_admin.get("socio", {})
+            creator_name = f"{socio.get('nome', '')} {socio.get('cognome', '')}".strip()
+            num_dates = len(parsed_res.get("survey", {}).get("dates", []))
+            add_log(
+                r,
+                action="EXCEL_PARSE_SUCCESS",
+                description=f"File Excel '{file_name}' elaborato con successo ({num_dates} date estratte) dall'admin {creator_name} ({email})",
+                source="backend",
+                user_email=email,
+                user_name=creator_name,
+                level="INFO",
+                ip_address=get_client_ip(request)
+            )
+
+            return JSONResponse(content={
+                "status": "success",
+                "survey": parsed_res.get("survey"),
+                "message": f"File Excel elaborato con successo: {num_dates} date trovate."
+            })
+
+        # --- AZIONE SENSIBILE ADMIN: IMPORTAZIONE DIRETTA E SALVATAGGIO SONDAGGIO DA EXCEL ---
+        if action == "IMPORT_EXCEL_SURVEY":
+            auth_admin = check_admin_permissions(r, email)
+            if not auth_admin.get("authorized"):
+                return JSONResponse(content={"status": "error", "message": auth_admin.get("message")})
+
+            file_base64 = payload.get("fileBase64") or payload.get("fileData") or ""
+            file_name = payload.get("fileName") or "questionario.xlsx"
+            deactivate_previous = bool(payload.get("deactivatePrevious", False))
+
+            if not file_base64:
+                return JSONResponse(content={"status": "error", "message": "Nessun file Excel inviato."})
+
+            parsed_res = parse_excel_base64(file_base64, file_name)
+            if not parsed_res.get("success"):
+                return JSONResponse(content={"status": "error", "message": parsed_res.get("error")})
+
+            survey_data = parsed_res.get("survey", {})
+            socio = auth_admin.get("socio", {})
+            creator_name = f"{socio.get('nome', '')} {socio.get('cognome', '')}".strip()
+
+            # Disattivazione facoltativa dei vecchi sondaggi attivi
+            if deactivate_previous:
+                all_surveys = get_all_surveys(r)
+                for s in all_surveys:
+                    if s.get("status") == "ATTIVO":
+                        toggle_survey_status(r, s["idSondaggio"], "DISATTIVATO")
+
+            id_sondaggio = create_survey(r, survey_data, creator_email=email, creator_name=creator_name)
+            add_log(
+                r,
+                action="EXCEL_SURVEY_IMPORTED",
+                description=f"Nuovo sondaggio creato e pubblicato direttamente da Excel: '{survey_data.get('title', '')}' (ID: {id_sondaggio}) da {creator_name} ({email})",
+                source="backend",
+                user_email=email,
+                user_name=creator_name,
+                level="SUCCESS",
+                ip_address=get_client_ip(request)
+            )
+
+            return JSONResponse(content={
+                "status": "success",
+                "idSondaggio": id_sondaggio,
+                "survey": survey_data,
+                "message": f"Questionario '{survey_data.get('title', '')}' importato da Excel e salvato nel database con successo!"
+            })
 
         # --- AZIONE SENSIBILE ADMIN: MODIFICA CONTENUTO SONDAGGIO ---
         if action == "UPDATE_SURVEY":
