@@ -33,7 +33,6 @@ import AddIcon from "@mui/icons-material/Add";
 import WarningAmberIcon from "@mui/icons-material/WarningAmber";
 import CloudUploadIcon from "@mui/icons-material/CloudUpload";
 import TableChartIcon from "@mui/icons-material/TableChart";
-import DescriptionIcon from "@mui/icons-material/Description";
 import FileDownloadIcon from "@mui/icons-material/FileDownload";
 import CheckCircleOutlineIcon from "@mui/icons-material/CheckCircleOutline";
 import AutoFixHighIcon from "@mui/icons-material/AutoFixHigh";
@@ -557,179 +556,169 @@ function SurveyEdit() {
                 <form onSubmit={handleSubmit}>
                     <Stack gap={2}>
 
-                        {/* SEZIONE: IMPORTA DA EXCEL */}
+                        {/* SEZIONE COMPATTA: IMPORTA DA EXCEL */}
                         {!isEditing && (
                             <Card sx={{
-                                borderRadius: "20px",
+                                borderRadius: "16px",
                                 border: "1px solid #c8ded2",
                                 borderTop: `4px solid ${OHEL_GREEN}`,
                                 backgroundColor: "#ffffff",
-                                boxShadow: "0 6px 16px rgba(46, 91, 67, 0.04)"
+                                boxShadow: "0 2px 8px rgba(46, 91, 67, 0.04)"
                             }}>
-                                <CardContent sx={{ p: 2.5, display: "flex", flexDirection: "column", gap: 2 }}>
+                                <CardContent sx={{ p: { xs: 1.8, sm: 2 }, display: "flex", flexDirection: "column", gap: 1.5 }}>
                                     <Box display="flex" alignItems="center" justifyContent="space-between" flexWrap="wrap" gap={1}>
                                         <Box display="flex" alignItems="center" gap={1}>
-                                            <TableChartIcon sx={{ color: OHEL_GREEN, fontSize: "1.6rem" }} />
-                                            <Typography variant="subtitle1" fontWeight="800" sx={{ color: OHEL_TEXT_DARK }}>
-                                                Carica Questionario da File Excel
+                                            <TableChartIcon sx={{ color: OHEL_GREEN, fontSize: "1.35rem" }} />
+                                            <Typography variant="subtitle2" fontWeight="800" sx={{ color: OHEL_TEXT_DARK, fontSize: { xs: "0.95rem", sm: "1rem" } }}>
+                                                Importa da Excel (.xlsx)
                                             </Typography>
                                         </Box>
-                                        <Chip
-                                            label="Importazione Intelligente"
+                                        <Button
+                                            href="/templates/Template_Questionario_OhelCMS.xlsx"
+                                            download="Template_Questionario_OhelCMS.xlsx"
+                                            variant="text"
                                             size="small"
-                                            sx={{
-                                                backgroundColor: "#e8f4ee",
-                                                color: OHEL_GREEN,
-                                                fontWeight: 700,
-                                                fontSize: "0.72rem"
-                                            }}
-                                        />
+                                            startIcon={<FileDownloadIcon sx={{ fontSize: "1rem" }} />}
+                                            sx={{ color: OHEL_SAGE, textTransform: "none", fontSize: "0.75rem", fontWeight: 700, p: 0.5 }}
+                                        >
+                                            Modello .xlsx
+                                        </Button>
                                     </Box>
 
-                                    <Typography variant="body2" sx={{ color: "#475569", fontSize: "0.86rem", lineHeight: 1.5 }}>
-                                        Carica un file <strong>.xlsx</strong> contenente titolo, descrizione e tabella delle date e fasce orarie.
-                                        Il backend convaliderà il token in modo protetto, effettuerà il parsing delle righe e predisporrà il sondaggio.
-                                    </Typography>
+                                    {/* Area File Picker Compatta */}
+                                    <input
+                                        type="file"
+                                        id="excel-survey-upload-input"
+                                        accept=".xlsx, .xls"
+                                        style={{ display: "none" }}
+                                        onChange={handleExcelFileChange}
+                                        disabled={excelLoading || submitting}
+                                    />
 
-                                    {/* Box File Picker */}
-                                    <Paper
-                                        variant="outlined"
-                                        sx={{
-                                            p: 2,
-                                            borderRadius: "14px",
-                                            backgroundColor: excelFile ? "#f2f8f4" : "#fafcfa",
-                                            borderColor: excelFile ? OHEL_GREEN : "#dce7e1",
-                                            borderStyle: excelFile ? "solid" : "dashed",
-                                            borderWidth: "1.5px",
-                                            display: "flex",
-                                            flexDirection: "column",
-                                            alignItems: "center",
-                                            gap: 1.5,
-                                            textAlign: "center"
-                                        }}
-                                    >
-                                        <input
-                                            type="file"
-                                            id="excel-survey-upload-input"
-                                            accept=".xlsx, .xls"
-                                            style={{ display: "none" }}
-                                            onChange={handleExcelFileChange}
-                                            disabled={excelLoading || submitting}
-                                        />
+                                    {!excelFile ? (
+                                        <label htmlFor="excel-survey-upload-input" style={{ width: "100%" }}>
+                                            <Button
+                                                variant="outlined"
+                                                component="span"
+                                                fullWidth
+                                                size="medium"
+                                                disabled={excelLoading || submitting}
+                                                startIcon={<CloudUploadIcon />}
+                                                sx={{
+                                                    py: 1.2,
+                                                    color: OHEL_GREEN,
+                                                    borderColor: "#b6d4c4",
+                                                    backgroundColor: "#fafcfa",
+                                                    textTransform: "none",
+                                                    fontWeight: 700,
+                                                    fontSize: "0.85rem",
+                                                    borderRadius: "12px",
+                                                    borderStyle: "dashed",
+                                                    borderWidth: "1.5px",
+                                                    "&:hover": { borderColor: OHEL_GREEN, backgroundColor: "#f0f7f3" }
+                                                }}
+                                            >
+                                                Scegli File Excel (.xlsx)
+                                            </Button>
+                                        </label>
+                                    ) : (
+                                        <Stack spacing={1.2}>
+                                            <Paper
+                                                variant="outlined"
+                                                sx={{
+                                                    p: 1.2,
+                                                    px: 1.5,
+                                                    borderRadius: "12px",
+                                                    backgroundColor: "#f2f8f4",
+                                                    borderColor: OHEL_GREEN,
+                                                    display: "flex",
+                                                    alignItems: "center",
+                                                    justifyContent: "space-between",
+                                                    gap: 1
+                                                }}
+                                            >
+                                                <Box display="flex" alignItems="center" gap={1} minWidth={0}>
+                                                    <TableChartIcon sx={{ color: OHEL_GREEN, fontSize: "1.2rem", flexShrink: 0 }} />
+                                                    <Box minWidth={0}>
+                                                        <Typography
+                                                            variant="body2"
+                                                            fontWeight="700"
+                                                            noWrap
+                                                            sx={{ color: OHEL_TEXT_DARK, fontSize: "0.82rem" }}
+                                                        >
+                                                            {excelFile.name}
+                                                        </Typography>
+                                                        <Typography variant="caption" sx={{ color: "#64748b", fontSize: "0.72rem" }}>
+                                                            {(excelFile.size / 1024).toFixed(1)} KB
+                                                        </Typography>
+                                                    </Box>
+                                                </Box>
 
-                                        <Box display="flex" alignItems="center" gap={1}>
-                                            <CloudUploadIcon sx={{ color: excelFile ? OHEL_GREEN : OHEL_SAGE, fontSize: "2rem" }} />
-                                            <Box textAlign="left">
-                                                <Typography variant="body2" fontWeight="700" sx={{ color: OHEL_TEXT_DARK }}>
-                                                    {excelFile ? excelFile.name : "Nessun file Excel selezionato"}
-                                                </Typography>
-                                                <Typography variant="caption" sx={{ color: "#64748b" }}>
-                                                    {excelFile
-                                                        ? `${(excelFile.size / 1024).toFixed(1)} KB • Pronto per l'elaborazione`
-                                                        : "Supporta file .xlsx e .xls compilati"}
-                                                </Typography>
-                                            </Box>
-                                        </Box>
+                                                <label htmlFor="excel-survey-upload-input">
+                                                    <Button
+                                                        component="span"
+                                                        size="small"
+                                                        variant="text"
+                                                        disabled={excelLoading || submitting}
+                                                        sx={{ color: OHEL_SAGE, textTransform: "none", fontSize: "0.75rem", fontWeight: 700, minWidth: "auto", p: 0.5 }}
+                                                    >
+                                                        Cambia
+                                                    </Button>
+                                                </label>
+                                            </Paper>
 
-                                        <Box display="flex" gap={1} flexWrap="wrap" justifyContent="center">
-                                            <label htmlFor="excel-survey-upload-input">
-                                                <Button
-                                                    variant="outlined"
-                                                    component="span"
-                                                    size="small"
-                                                    disabled={excelLoading || submitting}
-                                                    startIcon={<CloudUploadIcon />}
-                                                    sx={{
-                                                        color: OHEL_GREEN,
-                                                        borderColor: OHEL_GREEN,
-                                                        textTransform: "none",
-                                                        fontWeight: 700,
-                                                        borderRadius: "10px",
-                                                        "&:hover": { borderColor: "#1e382b", backgroundColor: "#f0f7f3" }
-                                                    }}
-                                                >
-                                                    {excelFile ? "Cambia File..." : "Seleziona File Excel..."}
-                                                </Button>
-                                            </label>
-
-                                            {excelFile && (
+                                            <Stack direction={{ xs: "column", sm: "row" }} spacing={1}>
                                                 <Button
                                                     variant="contained"
+                                                    fullWidth
                                                     size="small"
                                                     onClick={handleParseExcel}
                                                     disabled={excelLoading || submitting}
                                                     startIcon={excelLoading ? <CircularProgress size={16} color="inherit" /> : <AutoFixHighIcon />}
                                                     sx={{
+                                                        py: 1,
                                                         backgroundColor: OHEL_SAGE,
                                                         color: "#ffffff",
                                                         textTransform: "none",
                                                         fontWeight: 700,
+                                                        fontSize: "0.82rem",
                                                         borderRadius: "10px",
                                                         "&:hover": { backgroundColor: "#3e5c54" }
                                                     }}
                                                 >
-                                                    {excelLoading ? "Elaborazione in corso..." : "Analizza e Rivedi nel Modulo"}
+                                                    {excelLoading ? "Elaborazione..." : "Compila Modulo"}
                                                 </Button>
-                                            )}
 
-                                            {excelFile && (
                                                 <Button
                                                     variant="contained"
+                                                    fullWidth
                                                     size="small"
                                                     onClick={handleDirectImportClick}
                                                     disabled={excelLoading || submitting}
                                                     startIcon={excelLoading ? <CircularProgress size={16} color="inherit" /> : <CheckCircleOutlineIcon />}
                                                     sx={{
+                                                        py: 1,
                                                         backgroundColor: OHEL_GREEN,
                                                         color: "#ffffff",
                                                         textTransform: "none",
                                                         fontWeight: 800,
+                                                        fontSize: "0.82rem",
                                                         borderRadius: "10px",
                                                         "&:hover": { backgroundColor: "#1e382b" }
                                                     }}
                                                 >
-                                                    {excelLoading ? "Salvataggio..." : "🚀 Salva Subito nel Database"}
+                                                    {excelLoading ? "Salvataggio..." : "Salva nel DB"}
                                                 </Button>
-                                            )}
-                                        </Box>
-                                    </Paper>
+                                            </Stack>
+                                        </Stack>
+                                    )}
 
-                                    {/* Feedback di successo del parsing */}
+                                    {/* Feedback successo compatto */}
                                     {excelSuccessNotice && (
-                                        <Alert severity="success" sx={{ borderRadius: "12px", fontSize: "0.85rem", fontWeight: 600 }}>
+                                        <Alert severity="success" sx={{ py: 0.5, borderRadius: "10px", fontSize: "0.8rem", fontWeight: 600 }}>
                                             {excelSuccessNotice}
                                         </Alert>
                                     )}
-
-                                    {/* Download Modello Excel e File DOCX d'Esempio */}
-                                    <Divider sx={{ my: 0.5 }} />
-                                    <Box display="flex" alignItems="center" justifyContent="space-between" flexWrap="wrap" gap={1}>
-                                        <Typography variant="caption" sx={{ color: "#64748b", fontWeight: 600 }}>
-                                            Risorse e documentazione modello:
-                                        </Typography>
-                                        <Stack direction="row" spacing={1}>
-                                            <Button
-                                                href="/templates/Template_Questionario_OhelCMS.xlsx"
-                                                download="Template_Questionario_OhelCMS.xlsx"
-                                                variant="text"
-                                                size="small"
-                                                startIcon={<FileDownloadIcon fontSize="small" />}
-                                                sx={{ color: OHEL_GREEN, textTransform: "none", fontSize: "0.78rem", fontWeight: 700 }}
-                                            >
-                                                Modello Excel (.xlsx)
-                                            </Button>
-                                            <Button
-                                                href="/templates/Esempio_Questionario_OhelCMS.docx"
-                                                download="Esempio_Questionario_OhelCMS.docx"
-                                                variant="text"
-                                                size="small"
-                                                startIcon={<DescriptionIcon fontSize="small" />}
-                                                sx={{ color: OHEL_TEAL, textTransform: "none", fontSize: "0.78rem", fontWeight: 700 }}
-                                            >
-                                                Esempio e Guida (.docx)
-                                            </Button>
-                                        </Stack>
-                                    </Box>
                                 </CardContent>
                             </Card>
                         )}

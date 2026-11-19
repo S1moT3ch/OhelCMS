@@ -507,9 +507,7 @@ async def handle_get(request: Request):
         if not action:
             return JSONResponse(content={
                 "status": "ok",
-                "message": "OhelCMS Backend API in esecuzione (sostituzione Google Apps Script)",
-                "admin_panel": "/admin",
-                "endpoints": ["GET_ACTIVE_SURVEYS", "GET_ALL_SURVEYS", "GET_USER_VOTES", "GET_ALL_SURVEY_VOTES"]
+                "message": "OhelCMS Backend API in esecuzione (sostituzione Google Apps Script)"
             })
 
         # 1. GET_ACTIVE_SURVEYS (Restituisce i sondaggi attivi)
